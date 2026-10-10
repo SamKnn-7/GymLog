@@ -110,7 +110,7 @@ function cleanImport(data) {
       autoRest: !!s.autoRest,
     },
     workouts: list(data.workouts).filter(w => isDate(w.date))
-      .map(w => ({ id: uniqueId(w.id), date: w.date, name: text(w.name, 80).trim() || 'Workout', notes: text(w.notes, 1000), duration: Math.round(n(w.duration)), exercises: logged(w.exercises) }))
+      .map(w => ({ id: uniqueId(w.id), date: w.date, time: isClock(w.time) ? w.time : '', name: text(w.name, 80).trim() || 'Workout', notes: text(w.notes, 1000), duration: Math.round(n(w.duration)), exercises: logged(w.exercises) }))
       .filter(w => w.exercises.length),
     bodyweights: list(data.bodyweights).filter(e => isDate(e.date) && Number(e.weight) > 0).map(e => ({ date: e.date, weight: Number(e.weight) })),
     measurements: list(data.measurements).filter(m => isDate(m.date) && MEASUREMENTS.includes(m.type) && Number(m.value) > 0)
@@ -234,9 +234,13 @@ function demoData() {
         name: 'Plank', notes: '', kind: 'hold',
         sets: [45 + wi * 5 - (wi === 4 ? 10 : 0), 40 + wi * 5].map(seconds => ({ seconds, distance: 0, type: 'normal' })),
       }] : [];
+      // Pull days before work, the rest in the evening, with the odd lunchtime or late session
+      const hour = name === 'Pull' ? 6 : name === 'Push' && wi % 4 === 1 ? 12 : name === 'Legs' && wi === 7 ? 21 : name === 'Push' ? 18 : 17;
+      const time = `${String(hour).padStart(2, '0')}:${String(10 + (wi * 7 + offset * 3) % 45).padStart(2, '0')}`;
       workouts.push({
         id: workouts.length + 1,
         date,
+        time,
         name,
         notes: '',
         duration: Math.round(2700 + rand() * 1500),

@@ -62,6 +62,7 @@ function editWorkout(w) {
     name: w.name,
     notes: w.notes || '',
     durationMin: w.duration ? Math.round(w.duration / 60) : '',
+    time: workoutTime(w),
     exercises: w.exercises.map(ex => ({ name: ex.name, notes: ex.notes || '', kind: ex.kind || null, sets: ex.sets.map(s => editable(ex.kind, s, true)) })),
   };
   persist();
@@ -279,7 +280,8 @@ function activeView(a) {
           <label class="field">Date<input type="date" data-change="active-date" value="${esc(a.date)}" max="${isoDate()}"></label>
           ${isLive(a)
             ? '<div class="field"><span>Elapsed</span><span class="elapsed" data-elapsed></span></div>'
-            : `<label class="field">Minutes<input type="number" inputmode="numeric" min="0" data-input="active-field" data-key="durationMin" value="${esc(a.durationMin ?? '')}" placeholder="–"></label>`}
+            : `<label class="field">Started at<input type="time" data-input="active-field" data-key="time" value="${esc(a.time || '')}"></label>
+              <label class="field">Minutes<input type="number" inputmode="numeric" min="0" data-input="active-field" data-key="durationMin" value="${esc(a.durationMin ?? '')}" placeholder="–"></label>`}
         </div>
         <input class="note-input" placeholder="Notes: how it felt, sleep, anything worth remembering" data-input="active-field" data-key="notes" value="${esc(a.notes)}" aria-label="Workout notes">
         <div class="row end gap-s">
@@ -721,6 +723,8 @@ Actions['finish-workout'] = () => {
   const workout = {
     id: a.editingId || Date.now(),
     date: a.date || isoDate(),
+    // A live workout takes its start from the device clock; otherwise whatever was typed in
+    time: isLive(a) ? clockOf(new Date(a.startedAt)) : isClock(a.time) ? a.time : '',
     name: a.name.trim() || defaultWorkoutName(),
     notes: a.notes.trim(),
     duration: isLive(a) ? Math.round((Date.now() - a.startedAt) / 1000) : Math.round((Number(a.durationMin) || 0) * 60),

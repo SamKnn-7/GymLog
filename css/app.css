@@ -505,6 +505,7 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .workout-head .field { flex: none; }
 .workout-head .field input { width: 140px; }
 .workout-head .field input[type="number"] { width: 84px; }
+.workout-head .field input[type="time"] { width: 124px; }
 .elapsed { display: flex; align-items: center; height: 36px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-strong); min-width: 64px; }
 .ex-meta { margin-top: -6px; }
 
@@ -716,6 +717,8 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .hbar-mark { position: absolute; top: -3px; width: 2px; height: 14px; margin-left: -1px; background: var(--text-2); border-radius: 1px; }
 .hbar-val { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
 .hbar .delta { font-size: 11.500px; }
+.hbar.part { grid-template-columns: 76px minmax(0, 1fr) 20px 98px; }
+.section-title.sub { margin: 6px 0 -4px; font-size: 11.500px; }
 
 /* Month calendar */
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }

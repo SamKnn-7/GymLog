@@ -27,7 +27,7 @@ function workoutCard(w, a) {
   return `<section class="card workout-card">
     <div class="card-head">
       <div><h3>${esc(w.name)}</h3>
-        <span class="muted small">${fmtDate(w.date, 'weekday')}${w.duration >= 60 ? ` · ${fmtDuration(w.duration)}` : ''}${workoutSize(t, true)}</span></div>
+        <span class="muted small">${fmtDate(w.date, 'weekday')}${t.time ? ` · ${fmtClockTime(t.time)}` : ''}${w.duration >= 60 ? ` · ${fmtDuration(w.duration)}` : ''}${workoutSize(t, true)}</span></div>
       <div class="row gap-xs">
         <button class="icon-btn" data-action="repeat-workout" data-id="${w.id}" data-tip="Do this workout again" aria-label="Repeat workout">${icon('repeat', 16)}</button>
         <button class="icon-btn" data-action="save-as-routine" data-id="${w.id}" data-tip="Save as a routine" aria-label="Save as routine">${icon('bookmark', 16)}</button>

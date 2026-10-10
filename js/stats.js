@@ -53,6 +53,31 @@ function compareTimed(cur, prev) {
   return { status, now: cur.best, before: prev.best };
 }
 
+// Parts of the day a workout can start in: [key, label, hours]
+const DAY_PARTS = [
+  ['morning', 'Morning', '5am to noon'],
+  ['afternoon', 'Afternoon', 'Noon to 5pm'],
+  ['evening', 'Evening', '5pm to 9pm'],
+  ['night', 'Night', '9pm to 5am'],
+];
+
+function dayPart(time) {
+  const h = Number(time.slice(0, 2));
+  return h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 17 ? 'afternoon' : h >= 17 && h < 21 ? 'evening' : 'night';
+}
+
+// When a workout started, as 'HH:MM' on the device's own clock, or '' if unknown.
+// Workouts logged live before start times were stored still carry the moment
+// they were finished as their id, so the start can be worked back from that.
+function workoutTime(w) {
+  if (isClock(w.time)) return w.time;
+  if (w.id > 1e12) {
+    const start = new Date(w.id - (w.duration || 0) * 1000);
+    if (isoDate(start) === w.date) return clockOf(start);
+  }
+  return '';
+}
+
 // One pass over every workout. Returns:
 //   exercises  key -> { key, name, info, sessions[], max, records }
 //   bySession  'workoutId:exerciseIndex' -> session
@@ -61,6 +86,8 @@ function compareTimed(cur, prev) {
 //   days       ISO date -> { workouts, sets, cardio }
 //   prFeed     every session that set a record, oldest first
 //   rest       ISO date -> note, for days marked as rest days
+//   parts      part of day -> { workouts, up, compared }, for workouts with a known start time
+//   weekdays   workouts per weekday, Monday first
 // Cardio is kept out of set counts and volume and tracked as time and distance instead.
 function analyse() {
   if (_analysis) return _analysis;
@@ -70,6 +97,8 @@ function analyse() {
   const weeks = new Map();
   const days = new Map();
   const prFeed = [];
+  const parts = Object.fromEntries(DAY_PARTS.map(([key]) => [key, { workouts: 0, up: 0, compared: 0 }]));
+  const weekdays = [0, 0, 0, 0, 0, 0, 0];
 
   for (const w of sortedWorkouts()) {
     const ws = weekStartOf(w.date);
@@ -81,6 +110,8 @@ function analyse() {
     const day = days.get(w.date);
     day.workouts++;
     const total = { sets: 0, volume: 0, cardio: 0, distance: 0, prs: 0, up: 0, flat: 0, down: 0, compared: 0, muscles: {}, sessions: [] };
+    total.time = workoutTime(w);
+    total.part = total.time ? dayPart(total.time) : null;
     byWorkout.set(w.id, total);
 
     w.exercises.forEach((ex, exIdx) => {
@@ -198,9 +229,17 @@ function analyse() {
       week.volume += session.volume;
       day.sets += count;
     });
+
+    weekdays[(parseDate(w.date).getDay() + 6) % 7]++;
+    if (total.part) {
+      const part = parts[total.part];
+      part.workouts++;
+      part.up += total.up;
+      part.compared += total.compared;
+    }
   }
   const rest = new Map(state.restDays.map(r => [r.date, r.note || '']));
-  return (_analysis = { exercises, bySession, byWorkout, weeks, days, prFeed, rest });
+  return (_analysis = { exercises, bySession, byWorkout, weeks, days, prFeed, rest, parts, weekdays });
 }
 
 const PR_LABEL = {
@@ -404,6 +443,17 @@ function insights() {
       tone: dropped ? 'bad' : 'flat', key: e.key,
       html: `<strong>${esc(e.name)}</strong> hasn't improved in ${n} sessions. ${e.info.kind ? 'A small push next time gets it moving again.' : 'Drop the weight slightly and build back up.'}`,
     });
+  }
+
+  // Which part of the day goes best, once there is enough to compare
+  const rated = DAY_PARTS.map(([key, label]) => ({ label, ...a.parts[key] }))
+    .filter(p => p.workouts >= 3 && p.compared >= 6)
+    .map(p => ({ ...p, rate: p.up / p.compared * 100 }))
+    .sort((x, y) => y.rate - x.rate);
+  if (rated.length >= 2 && rated[0].rate - rated[rated.length - 1].rate >= 10) {
+    const best = rated[0];
+    const worst = rated[rated.length - 1];
+    out.push({ tone: 'info', html: `You progress most in <strong>${best.label.toLowerCase()}</strong> workouts: ${Math.round(best.rate)}% of exercises improved, against ${Math.round(worst.rate)}% in the ${worst.label.toLowerCase()}.` });
   }
 
   const lastTrained = {};

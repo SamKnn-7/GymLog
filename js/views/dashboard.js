@@ -112,7 +112,7 @@ function cardioCard(cur7, prev7) {
     .sort((x, y) => y.date.localeCompare(x.date));
   const head = `<div class="card-head"><h3>Cardio</h3><span class="muted small">Minutes a week</span></div>`;
   if (!sessions.length) {
-    return `<section class="card c-5">${head}
+    return `<section class="card c-6">${head}
       <p class="muted small">No cardio logged yet. When you add an exercise to a workout, pick one under <strong>Cardio</strong> (treadmill, bike, rowing machine and more) and enter the time. Distance is optional.</p>
       <button class="btn" data-action="nav" data-view="workout">${icon('plus', 16)} Start a workout</button>
     </section>`;
@@ -123,13 +123,47 @@ function cardioCard(cur7, prev7) {
       <span class="stack"><strong>${esc(s.name)}</strong><span class="muted small">${fmtSets(s.sets)} · ${relDay(s.date)}</span></span>
       ${badge(s.status, s.pr)}
     </li>`).join('');
-  return `<section class="card c-5">${head}
+  return `<section class="card c-6">${head}
     <div class="row between wrap">
       <div><span class="big-num">${count(minutes)}</span> <span class="muted">min in the last 7 days</span></div>
       <span class="muted small">${cur7.distance ? `${num(cur7.distance)} ${du} · ` : ''}${before} min the week before</span>
     </div>
     ${cardioBars(8)}
     <ul class="list">${recent}</ul>
+  </section>`;
+}
+
+// When workouts happen, by part of the day and by weekday, and how well each part goes
+function trainingTimesCard() {
+  const { parts, weekdays } = analyse();
+  const timed = sum(DAY_PARTS, ([key]) => parts[key].workouts);
+  const head = `<div class="card-head"><h3>When you train</h3><span class="muted small">${timed ? `${plural(timed, 'workout')} with a start time` : 'Time of day'}</span></div>`;
+
+  const most = Math.max(1, ...weekdays);
+  const names = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
+  const days = weekdays.map((n, i) => `<div class="bar-col" data-tip="${plural(n, 'workout')}|${names[i]}">
+      <span class="bar-val">${n || ''}</span>
+      <div class="bar-track"><div class="bar plain" style="height:${(n / most * 100).toFixed(1)}%;animation-delay:${i * 45}ms"></div></div>
+      <span class="bar-label">${names[i].slice(0, 3)}</span>
+    </div>`).join('');
+
+  const top = Math.max(1, ...DAY_PARTS.map(([key]) => parts[key].workouts));
+  const rows = DAY_PARTS.map(([key, label, hours], i) => {
+    const p = parts[key];
+    const rate = p.compared ? Math.round(p.up / p.compared * 100) : null;
+    return `<div class="hbar part" data-tip="${label}: ${plural(p.workouts, 'workout')}|${hours}${rate == null ? '' : `|${rate}% of exercises improved`}">
+      <span class="hbar-name">${label}</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:${(p.workouts / top * 100).toFixed(1)}%;animation-delay:${i * 30}ms"></span></span>
+      <span class="hbar-val">${p.workouts}</span>
+      <span class="muted small nowrap">${rate == null ? '' : `${rate}% improved`}</span>
+    </div>`;
+  }).join('');
+
+  return `<section class="card c-6">${head}
+    ${timed ? `<div class="hbars">${rows}</div>`
+      : '<p class="muted small">When you start a workout, GymLog notes the time from this device\u2019s clock. After a few sessions you\u2019ll see here whether you train, and progress, more in the morning or the evening.</p>'}
+    <p class="section-title sub">By weekday</p>
+    <div class="bars short">${days}</div>
   </section>`;
 }
 
@@ -221,7 +255,7 @@ Views.dashboard = {
       const t = a.byWorkout.get(w.id);
       return `<li class="clickable" data-action="hist-open" data-date="${w.date}">
         <span class="stack"><strong>${esc(w.name)}</strong>
-          <span class="muted small">${relDay(w.date)}${w.duration >= 60 ? ` · ${fmtDuration(w.duration)}` : ''}${workoutSize(t)}</span></span>
+          <span class="muted small">${relDay(w.date)}${t.part ? ` · ${t.part}` : ''}${w.duration >= 60 ? ` · ${fmtDuration(w.duration)}` : ''}${workoutSize(t)}</span></span>
         <span class="tally">${t.prs ? `<span class="badge up pr">★ ${t.prs}</span>` : ''}${tallyHtml(t)}</span>
       </li>`;
     }).join('');
@@ -288,7 +322,8 @@ Views.dashboard = {
       </section>
 
       ${cardioCard(cur7, prev7)}
-      <section class="card c-7">
+      ${trainingTimesCard()}
+      <section class="card c-12">
         <div class="card-head"><h3>Achievements</h3><span class="muted small">${unlocked} of ${badges.length} unlocked</span></div>
         <div class="ach-grid">${shelf}</div>
       </section>

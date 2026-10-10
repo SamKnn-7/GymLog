@@ -90,6 +90,18 @@ function fmtClock(seconds) {
   return h ? `${h}:${z(Math.floor(s / 60) % 60)}:${z(s % 60)}` : `${Math.floor(s / 60)}:${z(s % 60)}`;
 }
 
+// ---------- time of day ----------
+
+// 'HH:MM' on this device's clock, the form a workout's start time is stored in
+const clockOf = date => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+const isClock = text => /^([01]\d|2[0-3]):[0-5]\d$/.test(text || '');
+
+// A stored 'HH:MM' the way this device shows times (6:42 pm or 18:42)
+function fmtClockTime(time) {
+  const [h, m] = time.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 // ---------- timed exercises (cardio and holds) ----------
 
 // Time as shown everywhere: 45s, 1:30, 30:00, 1:05:00

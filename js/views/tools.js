@@ -153,12 +153,12 @@ Actions['export-json'] = () => {
 
 Actions['export-csv'] = () => {
   const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
-  const lines = [['date', 'workout', 'exercise', 'set', 'type', `weight_${unit()}`, 'reps', 'time_seconds', `distance_${distUnit()}`].join(',')];
+  const lines = [['date', 'started', 'workout', 'exercise', 'set', 'type', `weight_${unit()}`, 'reps', 'time_seconds', `distance_${distUnit()}`].join(',')];
   for (const w of sortedWorkouts()) {
     for (const ex of w.exercises) {
       ex.sets.forEach((s, i) => lines.push((ex.kind
-        ? [w.date, cell(w.name), cell(ex.name), i + 1, ex.kind, '', '', s.seconds, s.distance || '']
-        : [w.date, cell(w.name), cell(ex.name), i + 1, s.type, s.weight, s.reps, '', '']).join(',')));
+        ? [w.date, workoutTime(w), cell(w.name), cell(ex.name), i + 1, ex.kind, '', '', s.seconds, s.distance || '']
+        : [w.date, workoutTime(w), cell(w.name), cell(ex.name), i + 1, s.type, s.weight, s.reps, '', '']).join(',')));
     }
   }
   download(`gymlog-workouts-${isoDate()}.csv`, lines.join('\n'), 'text/csv');

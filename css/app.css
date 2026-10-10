@@ -689,7 +689,10 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .heat i.future { visibility: hidden; }
 .heat i.today { outline: 2px solid var(--text); outline-offset: -1px; }
 .heat i:hover { outline: 2px solid var(--text-2); outline-offset: -1px; }
-.heat i.has { cursor: pointer; }
+.heat i[data-action] { cursor: pointer; }
+/* A rest day is outlined, not filled: marked, but nothing was lifted */
+.heat i.rest, .heat-legend i.rest { background: var(--surface); box-shadow: inset 0 0 0 1.500px var(--neutral); }
+.heat-legend i.gap { margin-left: 8px; }
 
 /* Weekly bars */
 .bars { display: flex; gap: 4px; height: 172px; }
@@ -721,7 +724,11 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .cal-day.today { box-shadow: inset 0 0 0 1.500px var(--line-2); }
 .cal-day.has { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
 .cal-day.has:hover { background: color-mix(in srgb, var(--accent) 26%, var(--surface)); }
-.cal-day.sel { background: var(--accent); color: #fff; }
+button.cal-day { cursor: pointer; }
+button.cal-day:hover { background: var(--hover); }
+.cal-day.rest { box-shadow: inset 0 0 0 1.500px var(--neutral); color: var(--text-2); }
+.cal-day.future { opacity: .45; }
+.cal-day.sel, button.cal-day.sel:hover { background: var(--accent); color: #fff; box-shadow: none; }
 
 /* Barbell */
 .barbell { display: flex; align-items: center; gap: 2px; height: 84px; padding: 0 4px; }

@@ -28,6 +28,7 @@ function defaults() {
     measurements: [],    // { date, type, value }
     routines: [],        // { id, name, exercises: [{ name, sets: [{ reps, weight, type }] }] }
     customExercises: [], // { name, muscle, equipment }
+    restDays: [],        // { date, note }: days deliberately taken off
     active: null,        // the workout or routine being edited right now
     demo: false,
   };
@@ -118,6 +119,8 @@ function cleanImport(data) {
       .filter(r => r.exercises.length),
     customExercises: list(data.customExercises).filter(e => text(e.name, 80).trim())
       .map(e => ({ name: text(e.name, 80).trim(), muscle: CATEGORIES.includes(e.muscle) ? e.muscle : 'Other', equipment: '' })),
+    // One entry per date; a later duplicate wins
+    restDays: [...new Map(list(data.restDays).filter(r => isDate(r.date)).map(r => [r.date, { date: r.date, note: text(r.note, 200) }])).values()],
   });
 }
 
@@ -280,5 +283,15 @@ function demoData() {
       { date, type: 'Chest', value: chest }, { date, type: 'Arms', value: arms });
   });
 
-  return { workouts, bodyweights, measurements, routines, settings: { ...defaultSettings(), targetWeight: 77, height: 178 } };
+  // Sundays off for the last few weeks, plus the two sessions that were skipped above
+  const restDays = [
+    { date: addDays(weeks[3], 4), note: 'Sore knee, skipped legs' },
+    { date: addDays(weeks[6], 2), note: 'Travelling for work' },
+  ];
+  weeks.forEach((monday, wi) => {
+    const sunday = addDays(monday, 6);
+    if (wi >= 4 && sunday <= today) restDays.push({ date: sunday, note: '' });
+  });
+
+  return { workouts, bodyweights, measurements, routines, restDays, settings: { ...defaultSettings(), targetWeight: 77, height: 178 } };
 }

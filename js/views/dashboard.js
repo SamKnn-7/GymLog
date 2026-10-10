@@ -34,11 +34,26 @@ function upNextCard() {
     </section>`;
   }
   const next = nextRoutine();
+  const today = isoDate();
+  if (isRestDay(today)) {
+    return `<section class="card accent-card">
+      <div class="card-head"><h3>Today</h3><span class="muted small">${fmtDate(today, 'weekday')}</span></div>
+      <p class="up-next-name">😴 Rest day</p>
+      <p class="muted small">Recovery is part of training.${next ? ` Up next: ${esc(next.routine.name)}.` : ''}</p>
+      <div class="row gap-s">
+        <button class="btn grow" data-action="rest-toggle" data-date="today">Undo rest day</button>
+        ${next ? `<button class="btn grow" data-action="start-routine" data-id="${next.routine.id}">Train anyway</button>` : ''}
+      </div>
+    </section>`;
+  }
+  // Offered until something is logged today
+  const restButton = analyse().days.has(today) ? '' : '<button class="btn wide" data-action="rest-toggle" data-date="today">Take a rest day today</button>';
   if (!next) {
     return `<section class="card accent-card">
       <div class="card-head"><h3>Up next</h3></div>
       <p class="muted small">Save a routine and GymLog will suggest which one to do next.</p>
       <button class="btn primary wide" data-action="nav" data-view="workout">${icon('plus', 16)} Start workout</button>
+      ${restButton}
     </section>`;
   }
   const r = next.routine;
@@ -47,6 +62,7 @@ function upNextCard() {
     <p class="up-next-name">${esc(r.name)}</p>
     <p class="muted small">${r.exercises.map(e => esc(e.name)).join(' · ')}</p>
     <button class="btn primary wide" data-action="start-routine" data-id="${r.id}">${icon('play', 16)} Start ${esc(r.name)}</button>
+    ${restButton}
   </section>`;
 }
 

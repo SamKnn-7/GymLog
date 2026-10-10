@@ -355,6 +355,7 @@ function launcherView() {
       <div class="row gap-s wrap">
         <button class="btn primary lg" data-action="start-empty">${icon('plus', 18)} Start empty workout</button>
         <button class="btn lg" data-action="new-routine">${icon('bookmark', 18)} New routine</button>
+        ${analyse().days.has(isoDate()) ? '' : `<button class="btn lg" data-action="rest-toggle" data-date="today">${isRestDay(isoDate()) ? 'Undo rest day' : 'Rest day today'}</button>`}
       </div>
     </section>
     <div class="c-4 col">${next ? upNextCard() : `<section class="card accent-card">
@@ -727,6 +728,8 @@ Actions['finish-workout'] = () => {
   };
   if (a.editingId) state.workouts = state.workouts.map(w => w.id === a.editingId ? workout : w);
   else state.workouts.push(workout);
+  // Training on a day cancels its rest mark
+  state.restDays = state.restDays.filter(r => r.date !== workout.date);
   state.active = null;
   stopTimer();
   save();

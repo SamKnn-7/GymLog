@@ -144,7 +144,7 @@ function dayLabel(day) {
 
 // Calendar grid, one column per week with Monday on top. Darker = more sets that day.
 function heatmap(weeksCount = 16) {
-  const { days } = analyse();
+  const { days, rest } = analyse();
   const today = isoDate();
   const mondays = weeksBack(weeksCount);
   let max = 1;
@@ -159,16 +159,17 @@ function heatmap(weeksCount = 16) {
     for (let d = 0; d < 7; d++) {
       const date = addDays(monday, d);
       const day = days.get(date);
-      const cls = date > today ? 'future' : `l${day ? clamp(Math.ceil(day.sets / max * 4), 1, 4) : 0}`;
-      const tip = `${day ? dayLabel(day) : 'Rest day'}|${fmtDate(date, 'weekday')}`;
-      // Days with a workout open that day in History
-      const link = day ? ` data-action="hist-open" data-date="${date}"` : '';
-      cells += `<i class="${cls}${date === today ? ' today' : ''}${day ? ' has' : ''}"${link} data-tip="${esc(tip)}" style="animation-delay:${col * 25}ms"></i>`;
+      const isRest = !day && rest.has(date);
+      const cls = date > today ? 'future' : isRest ? 'rest' : `l${day ? clamp(Math.ceil(day.sets / max * 4), 1, 4) : 0}`;
+      const tip = `${day ? dayLabel(day) : isRest ? 'Rest day' : 'Nothing logged'}|${fmtDate(date, 'weekday')}${isRest && rest.get(date) ? `|${rest.get(date)}` : ''}`;
+      // Any day up to today opens in History, where it can be marked as a rest day or filled in
+      const link = date <= today ? ` data-action="hist-open" data-date="${date}"` : '';
+      cells += `<i class="${cls}${date === today ? ' today' : ''}"${link} data-tip="${esc(tip)}" style="animation-delay:${col * 25}ms"></i>`;
     }
   });
   return `<div class="heat-months" style="--cols:${weeksCount}">${months}</div>
     <div class="heat" style="--cols:${weeksCount}">${cells}</div>
-    <div class="heat-legend">Less <i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> More</div>`;
+    <div class="heat-legend">Less <i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> More <i class="rest gap"></i> Rest day</div>`;
 }
 
 // Weekly training load for the last n weeks. Uses volume lifted, or set count
@@ -235,9 +236,9 @@ function muscleBars(cur, prev) {
   }).join('')}</div>`;
 }
 
-// One month as a grid; days with a workout are buttons
+// One month as a grid. Every day up to today is a button: workouts are filled, rest days outlined
 function monthCalendar(ym, selected) {
-  const { days } = analyse();
+  const { days, rest } = analyse();
   const [y, mth] = ym.split('-').map(Number);
   const count = new Date(y, mth, 0).getDate();
   const lead = (new Date(y, mth - 1, 1).getDay() + 6) % 7;
@@ -246,10 +247,12 @@ function monthCalendar(ym, selected) {
   for (let d = 1; d <= count; d++) {
     const date = `${ym}-${String(d).padStart(2, '0')}`;
     const day = days.get(date);
-    const cls = `cal-day${date === today ? ' today' : ''}`;
-    cells += day
-      ? `<button class="${cls} has${date === selected ? ' sel' : ''}" data-action="hist-day" data-date="${date}" data-tip="${dayLabel(day)}|${fmtDate(date, 'weekday')}">${d}</button>`
-      : `<span class="${cls}">${d}</span>`;
+    const isRest = !day && rest.has(date);
+    const cls = `cal-day${date === today ? ' today' : ''}${day ? ' has' : isRest ? ' rest' : ''}${date === selected ? ' sel' : ''}`;
+    const tip = `${day ? dayLabel(day) : isRest ? 'Rest day' : 'Nothing logged'}|${fmtDate(date, 'weekday')}`;
+    cells += date > today
+      ? `<span class="${cls} future">${d}</span>`
+      : `<button class="${cls}" data-action="hist-day" data-date="${date}" data-tip="${esc(tip)}">${d}</button>`;
   }
   return `<div class="cal">${cells}</div>`;
 }

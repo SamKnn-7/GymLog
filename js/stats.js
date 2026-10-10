@@ -60,6 +60,7 @@ function compareTimed(cur, prev) {
 //   weeks      Monday ISO date -> { workouts, sets, volume, duration, cardio, distance, muscles }
 //   days       ISO date -> { workouts, sets, cardio }
 //   prFeed     every session that set a record, oldest first
+//   rest       ISO date -> note, for days marked as rest days
 // Cardio is kept out of set counts and volume and tracked as time and distance instead.
 function analyse() {
   if (_analysis) return _analysis;
@@ -198,7 +199,8 @@ function analyse() {
       day.sets += count;
     });
   }
-  return (_analysis = { exercises, bySession, byWorkout, weeks, days, prFeed });
+  const rest = new Map(state.restDays.map(r => [r.date, r.note || '']));
+  return (_analysis = { exercises, bySession, byWorkout, weeks, days, prFeed, rest });
 }
 
 const PR_LABEL = {
@@ -228,6 +230,19 @@ function windowTotals(from, to) {
     for (const [m, n] of Object.entries(t.muscles)) out.muscles[m] = (out.muscles[m] || 0) + n;
   }
   return out;
+}
+
+// A rest day only counts on a day with no workout logged
+const isRestDay = date => { const a = analyse(); return a.rest.has(date) && !a.days.has(date); };
+
+// Training days in a row, counting back from today (or yesterday if today is still open)
+function trainingRun() {
+  const { days } = analyse();
+  let date = isoDate();
+  if (!days.has(date)) date = addDays(date, -1);
+  let n = 0;
+  while (days.has(date)) { n++; date = addDays(date, -1); }
+  return n;
 }
 
 // Consecutive weeks with at least one workout: the run ending now, and the best ever
@@ -356,6 +371,11 @@ function insights() {
   if (left <= 0) out.push({ tone: 'good', html: `Weekly goal hit: <strong>${done} of ${s.weeklyGoal}</strong> workouts done.` });
   else if (left > daysLeft) out.push({ tone: 'bad', html: `<strong>${plural(left, 'workout')}</strong> short of your weekly goal with ${plural(daysLeft, 'day')} left.` });
   else out.push({ tone: 'info', html: `<strong>${plural(left, 'more workout')}</strong> this week to hit your goal of ${s.weeklyGoal}.` });
+
+  const run = trainingRun();
+  if (run >= 5 && !isRestDay(today)) {
+    out.push({ tone: 'info', html: `You've trained <strong>${run} days in a row</strong>. A rest day would help you recover.` });
+  }
 
   const recent = [...a.exercises.values()].filter(e => daysBetween(e.sessions[e.sessions.length - 1].date, today) <= 21);
 

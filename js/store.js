@@ -17,6 +17,7 @@ function defaultSettings() {
     restSeconds: 90,
     autoRest: true,
     setupDone: false,    // has the first-run setup been finished or skipped
+    installDismissed: false, // "Not now" on the install banner
   };
 }
 

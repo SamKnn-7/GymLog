@@ -2,6 +2,7 @@
 
 function welcomeView() {
   return `<div class="grid">
+    ${installBanner()}
     <section class="card hero c-12">
       <div class="hero-icon">🏋️</div>
       <h2>Welcome to GymLog</h2>
@@ -280,6 +281,7 @@ Views.dashboard = {
     const bars = weeklyBars(8);
 
     return `<div class="grid">
+      ${installBanner()}
       ${state.demo ? `<section class="card banner c-12 row between wrap">
         <span>You're looking at <strong>sample data</strong>. Clear it when you're ready to log your own.</span>
         <button class="btn sm" data-action="clear-demo">Clear and start fresh</button>

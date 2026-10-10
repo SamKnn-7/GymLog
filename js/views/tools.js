@@ -63,6 +63,7 @@ Views.tools = {
     const empty = !state.workouts.length && !state.bodyweights.length;
     return `<div class="grid">
       <div class="c-6 col">
+        ${installCard()}
         ${plateCard()}
         <section class="card">
           <div class="card-head"><h3>Preferences</h3></div>

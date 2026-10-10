@@ -794,6 +794,10 @@ button.cal-day:hover { background: var(--hover); }
 .field.big { font-size: 13px; }
 .field.big input { height: 46px; font-size: 18px; font-weight: 650; }
 
+.install-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-left: 22px; }
+.install-steps li { padding-left: 4px; }
+.install-steps .icon { vertical-align: -3px; color: var(--accent-strong); }
+
 /* ---------- overlays ---------- */
 
 .overlay {

@@ -3,7 +3,7 @@
 // handled here; that lives in the browser's own storage.
 //
 // Bump CACHE whenever the app's files change, so phones pick up the new version.
-const CACHE = 'gymlog-v6';
+const CACHE = 'gymlog-v7';
 const SHELL = [
   './',
   'index.html',
@@ -17,6 +17,7 @@ const SHELL = [
   'js/ui.js',
   'js/timer.js',
   'js/core.js',
+  'js/install.js',
   'js/views/dashboard.js',
   'js/views/workout.js',
   'js/views/history.js',

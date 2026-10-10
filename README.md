@@ -42,12 +42,14 @@ It works on a phone, a tablet or a computer, needs no account, and keeps working
 
 ## Put it on your phone
 
-Open the link above, then:
+Open the link above and tap **Install app**, on the dashboard or under Tools. On Android that installs it straight away. On an iPhone it shows the steps, because iPhones only install from the Share menu:
 
 - **iPhone:** in Safari, tap the Share button, then **Add to Home Screen**.
-- **Android:** in Chrome, tap the ⋮ menu, then **Add to Home screen** or **Install app**.
+- **Android:** if the button is not offered, tap the ⋮ menu in Chrome, then **Install app** or **Add to Home screen**.
 
 It then opens full screen from its own icon and works offline.
+
+On an iPhone, install before you start logging: the installed app keeps its own data, separate from Safari. If you have already logged workouts in Safari, export a backup there and import it in the installed app.
 
 ## Your data
 

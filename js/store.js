@@ -16,6 +16,7 @@ function defaultSettings() {
     barWeight: 20,
     restSeconds: 90,
     autoRest: true,
+    setupDone: false,    // has the first-run setup been finished or skipped
   };
 }
 
@@ -108,6 +109,7 @@ function cleanImport(data) {
       barWeight: n(s.barWeight),
       restSeconds: clamp(Math.round(n(s.restSeconds)) || 90, 10, 900),
       autoRest: !!s.autoRest,
+      setupDone: true,
     },
     workouts: list(data.workouts).filter(w => isDate(w.date))
       .map(w => ({ id: uniqueId(w.id), date: w.date, time: isClock(w.time) ? w.time : '', name: text(w.name, 80).trim() || 'Workout', notes: text(w.notes, 1000), duration: Math.round(n(w.duration)), exercises: logged(w.exercises) }))

@@ -21,7 +21,7 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && modalOpen()) return closeModal();
+  if (e.key === 'Escape' && modalOpen()) return ui.setup ? Actions['setup-skip']() : closeModal();
   if (e.key !== 'Enter') return;
   const el = e.target;
 
@@ -31,6 +31,7 @@ document.addEventListener('keydown', e => {
     if (first) first.click();
     return;
   }
+  if (el.dataset.input === 'setup-field') return $('#setup .btn.primary').click();
   if (el.id === 'bw-weight') return Actions['save-bw']();
   if (el.id === 'measure-value') return Actions['save-measure']();
 
@@ -73,3 +74,4 @@ if (!state.demo && (state.workouts.length || state.bodyweights.length)) keepStor
 initTooltips();
 setInterval(tickClock, 1000);
 render(true);
+if (needsSetup()) openSetup();

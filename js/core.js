@@ -28,6 +28,7 @@ const ui = {
   body: { range: 'all' },
   picker: { q: '', muscle: 'All', equipment: 'Any' },
   tools: { plateTarget: '', rmWeight: '', rmReps: '' },
+  setup: null, // answers so far while the first-run setup is open
 };
 
 // A workout counts as live (clock running, rest timer auto-starts) when it

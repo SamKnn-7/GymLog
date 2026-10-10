@@ -15,6 +15,7 @@ function welcomeView() {
         <button class="btn primary lg" data-action="start-empty">${icon('plus', 18)} Start your first workout</button>
         <button class="btn lg" data-action="load-demo">Try it with sample data</button>
       </div>
+      <button class="link" data-action="setup-open">Set your bodyweight, weekly goal and routines</button>
     </section>
     <div class="c-12">
       <h3 class="section-title">Or start from a ready-made routine</h3>

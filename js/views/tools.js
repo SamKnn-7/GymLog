@@ -75,6 +75,7 @@ Views.tools = {
             <label class="field">Default rest${select('restSeconds', [[45, '0:45'], [60, '1:00'], [90, '1:30'], [120, '2:00'], [180, '3:00'], [240, '4:00']])}</label>
           </div>
           <label class="check"><input type="checkbox" data-change="setting" data-key="autoRest" ${s.autoRest ? 'checked' : ''}> Start the rest timer when I tick off a set</label>
+          <div><button class="btn" data-action="setup-open">Run the intro setup again</button></div>
         </section>
         ${custom ? `<section class="card">
           <div class="card-head"><h3>My exercises</h3><span class="muted small">Added by you</span></div>
@@ -186,6 +187,8 @@ Changes['import-json'] = el => {
 };
 
 Actions['load-demo'] = () => {
+  ui.setup = null;
+  closeModal();
   const keep = { theme: state.settings.theme, motion: state.settings.motion };
   const demo = demoData();
   state = withDefaults({ ...demo, settings: { ...demo.settings, ...keep }, demo: true });
@@ -201,6 +204,8 @@ function clearAll(question) {
   stopTimer();
   save();
   go('dashboard');
+  // A clean slate gets the intro again
+  if (needsSetup()) openSetup();
 }
 
 Actions['clear-demo'] = () => clearAll('Remove the sample data, including anything you logged on top of it?');

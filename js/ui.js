@@ -152,8 +152,9 @@ function toast(msg, tone = '') {
 
 // ---------- modal ----------
 
-function openModal(html, cls = '') {
-  $('#modal').innerHTML = `<div class="overlay" data-overlay><div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div></div>`;
+// locked: tapping outside the dialog does not close it
+function openModal(html, cls = '', locked = false) {
+  $('#modal').innerHTML = `<div class="overlay" ${locked ? '' : 'data-overlay'}><div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div></div>`;
   document.body.classList.add('modal-open');
 }
 

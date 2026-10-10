@@ -31,13 +31,36 @@ function compare(cur, prev) {
   return 'flat';
 }
 
+// The same verdict for timed exercises, plus the two numbers it was based on
+// (`now` against `before`, bigger is better) so a change can be shown as a %.
+//   Cardio with distance both times: further is better; same distance, faster is better.
+//   Cardio without distance: longer is better.
+//   Holds: longest single hold, then total time.
+function compareTimed(cur, prev) {
+  if (cur.kind === 'cardio') {
+    if (cur.distance > 0 && prev.distance > 0) {
+      if (Math.abs(cur.distance - prev.distance) > EPS) {
+        return { status: cur.distance > prev.distance ? 'up' : 'down', now: cur.distance, before: prev.distance };
+      }
+      const status = cur.seconds === prev.seconds ? 'flat' : cur.seconds < prev.seconds ? 'up' : 'down';
+      return { status, now: prev.seconds, before: cur.seconds };
+    }
+    const status = cur.seconds === prev.seconds ? 'flat' : cur.seconds > prev.seconds ? 'up' : 'down';
+    return { status, now: cur.seconds, before: prev.seconds };
+  }
+  const key = cur.best !== prev.best ? 'best' : 'seconds';
+  const status = cur[key] === prev[key] ? 'flat' : cur[key] > prev[key] ? 'up' : 'down';
+  return { status, now: cur.best, before: prev.best };
+}
+
 // One pass over every workout. Returns:
 //   exercises  key -> { key, name, info, sessions[], max, records }
 //   bySession  'workoutId:exerciseIndex' -> session
-//   byWorkout  workoutId -> { sets, volume, prs, up, compared, muscles, sessions[] }
-//   weeks      Monday ISO date -> { workouts, sets, volume, duration, muscles }
-//   days       ISO date -> { workouts, sets }
+//   byWorkout  workoutId -> { sets, volume, cardio, distance, prs, up, flat, down, compared, muscles, sessions[] }
+//   weeks      Monday ISO date -> { workouts, sets, volume, duration, cardio, distance, muscles }
+//   days       ISO date -> { workouts, sets, cardio }
 //   prFeed     every session that set a record, oldest first
+// Cardio is kept out of set counts and volume and tracked as time and distance instead.
 function analyse() {
   if (_analysis) return _analysis;
   const exercises = new Map();
@@ -49,83 +72,130 @@ function analyse() {
 
   for (const w of sortedWorkouts()) {
     const ws = weekStartOf(w.date);
-    if (!weeks.has(ws)) weeks.set(ws, { workouts: 0, sets: 0, volume: 0, duration: 0, muscles: {} });
+    if (!weeks.has(ws)) weeks.set(ws, { workouts: 0, sets: 0, volume: 0, duration: 0, cardio: 0, distance: 0, muscles: {} });
     const week = weeks.get(ws);
     week.workouts++;
     week.duration += w.duration || 0;
-    if (!days.has(w.date)) days.set(w.date, { workouts: 0, sets: 0 });
+    if (!days.has(w.date)) days.set(w.date, { workouts: 0, sets: 0, cardio: 0 });
     const day = days.get(w.date);
     day.workouts++;
-    const total = { sets: 0, volume: 0, prs: 0, up: 0, compared: 0, muscles: {}, sessions: [] };
+    const total = { sets: 0, volume: 0, cardio: 0, distance: 0, prs: 0, up: 0, flat: 0, down: 0, compared: 0, muscles: {}, sessions: [] };
     byWorkout.set(w.id, total);
 
     w.exercises.forEach((ex, exIdx) => {
       const key = norm(ex.name);
       if (!exercises.has(key)) {
-        exercises.set(key, { key, name: ex.name, info: exerciseInfo(ex.name), sessions: [], max: { best: 0, weight: 0, load: 0 }, records: {} });
+        exercises.set(key, { key, name: ex.name, info: exerciseInfo(ex.name), sessions: [], max: { best: 0, weight: 0, load: 0, seconds: 0, distance: 0 }, records: {} });
       }
       const entry = exercises.get(key);
       entry.name = ex.name;
-
-      // Warm-ups are logged but never count towards progress
-      const warm = ex.sets.filter(s => s.type === 'warmup');
-      let work = ex.sets.filter(s => s.type !== 'warmup');
-      if (!work.length) work = ex.sets;
-      let bestSet = work[0];
-      let volume = 0, reps = 0, maxWeight = 0, maxReps = 0;
-      for (const s of work) {
-        volume += s.reps * s.weight;
-        reps += s.reps;
-        maxWeight = Math.max(maxWeight, s.weight);
-        maxReps = Math.max(maxReps, s.reps);
-        if (setScore(s) > setScore(bestSet)) bestSet = s;
-      }
-      const weighted = maxWeight > 0;
-      const load = weighted ? volume : reps;
-      const session = {
-        wid: w.id, exIdx, key, name: ex.name, date: w.date, sets: ex.sets, work, warm,
-        bestSet, best: setScore(bestSet), volume, reps, maxWeight, maxReps, weighted, load, prs: [],
-      };
+      const kind = ex.kind || null;
       const prev = entry.sessions[entry.sessions.length - 1] || null;
-      session.prev = prev;
-      session.status = prev ? compare(session, prev) : 'new';
-      session.delta = prev ? session.best - prev.best : 0;
-      session.deltaPct = prev && prev.best ? session.delta / prev.best * 100 : 0;
+      // Only compare like with like: a timed session never follows on from a reps one
+      const comparable = prev && prev.kind === kind ? prev : null;
+      let session;
 
-      // Records. 'best' and 'weight' are strength PRs and earn the star;
-      // a volume record is noted in the feed but is easier to come by.
-      if (prev) {
-        if (session.best > entry.max.best + EPS) session.prs.push('best');
-        if (weighted && maxWeight > entry.max.weight + EPS) session.prs.push('weight');
-        if (load > entry.max.load + EPS) session.prs.push('volume');
+      if (kind) {
+        const work = ex.sets;
+        const seconds = sum(work, s => s.seconds);
+        const distance = sum(work, s => s.distance || 0);
+        let bestSet = work[0];
+        for (const s of work) {
+          if ((s.distance || 0) > (bestSet.distance || 0) || ((s.distance || 0) === (bestSet.distance || 0) && s.seconds > bestSet.seconds)) bestSet = s;
+        }
+        // The headline number: distance for cardio when logged, else time; longest hold for holds
+        const best = kind === 'hold' ? Math.max(...work.map(s => s.seconds)) : distance > 0 ? distance : seconds;
+        session = {
+          wid: w.id, exIdx, key, name: ex.name, date: w.date, kind, timed: true, sets: work, work, warm: [],
+          bestSet, best, seconds, distance, speed: distance > 0 && seconds > 0 ? distance / (seconds / 3600) : 0,
+          volume: 0, reps: 0, maxWeight: 0, maxReps: 0, weighted: false, load: seconds, prs: [],
+        };
+        const verdict = comparable ? compareTimed(session, comparable) : null;
+        session.status = verdict ? verdict.status : 'new';
+        session.delta = verdict ? verdict.now - verdict.before : 0;
+        session.deltaPct = verdict && verdict.before ? session.delta / verdict.before * 100 : 0;
+        if (comparable) {
+          if (kind === 'cardio' && distance > entry.max.distance + EPS) session.prs.push('distance');
+          if (kind === 'cardio' ? seconds > entry.max.seconds : best > entry.max.best) session.prs.push('time');
+        }
+        session.pr = session.prs.length > 0;
+      } else {
+        // Warm-ups are logged but never count towards progress
+        const warm = ex.sets.filter(s => s.type === 'warmup');
+        let work = ex.sets.filter(s => s.type !== 'warmup');
+        if (!work.length) work = ex.sets;
+        let bestSet = work[0];
+        let volume = 0, reps = 0, maxWeight = 0, maxReps = 0;
+        for (const s of work) {
+          volume += s.reps * s.weight;
+          reps += s.reps;
+          maxWeight = Math.max(maxWeight, s.weight);
+          maxReps = Math.max(maxReps, s.reps);
+          if (setScore(s) > setScore(bestSet)) bestSet = s;
+        }
+        const weighted = maxWeight > 0;
+        const load = weighted ? volume : reps;
+        session = {
+          wid: w.id, exIdx, key, name: ex.name, date: w.date, kind: null, timed: false, sets: ex.sets, work, warm,
+          bestSet, best: setScore(bestSet), seconds: 0, distance: 0, speed: 0,
+          volume, reps, maxWeight, maxReps, weighted, load, prs: [],
+        };
+        session.status = comparable ? compare(session, comparable) : 'new';
+        session.delta = comparable ? session.best - comparable.best : 0;
+        session.deltaPct = comparable && comparable.best ? session.delta / comparable.best * 100 : 0;
+        // Records. 'best' and 'weight' are strength PRs and earn the star;
+        // a volume record is noted in the feed but is easier to come by.
+        if (comparable) {
+          if (session.best > entry.max.best + EPS) session.prs.push('best');
+          if (weighted && maxWeight > entry.max.weight + EPS) session.prs.push('weight');
+          if (load > entry.max.load + EPS) session.prs.push('volume');
+        }
+        session.pr = session.prs.includes('best') || session.prs.includes('weight');
       }
-      session.pr = session.prs.includes('best') || session.prs.includes('weight');
-      // A heavier top weight is progress even when the reps (and so the volume) drop
+      session.prev = comparable;
+      // A record is progress even when the tie-breakers say otherwise
+      // (heavier weight for fewer reps, a longer run over less distance)
       if (session.pr) session.status = 'up';
+
       const rec = entry.records;
       if (!rec.best || session.best > rec.best.best) rec.best = session;
-      if (!rec.weight || maxWeight > rec.weight.maxWeight) rec.weight = session;
-      if (!rec.volume || load > rec.volume.load) rec.volume = session;
-      if (!rec.reps || maxReps > rec.reps.maxReps) rec.reps = session;
+      if (!rec.weight || session.maxWeight > rec.weight.maxWeight) rec.weight = session;
+      if (!rec.volume || session.load > rec.volume.load) rec.volume = session;
+      if (!rec.reps || session.maxReps > rec.reps.maxReps) rec.reps = session;
+      if (!rec.time || session.seconds > rec.time.seconds) rec.time = session;
+      if (session.distance > 0 && (!rec.distance || session.distance > rec.distance.distance)) rec.distance = session;
+      if (session.speed > 0 && (!rec.speed || session.speed > rec.speed.speed)) rec.speed = session;
       entry.max.best = Math.max(entry.max.best, session.best);
-      entry.max.weight = Math.max(entry.max.weight, maxWeight);
-      entry.max.load = Math.max(entry.max.load, load);
+      entry.max.weight = Math.max(entry.max.weight, session.maxWeight);
+      entry.max.load = Math.max(entry.max.load, session.load);
+      entry.max.seconds = Math.max(entry.max.seconds, session.seconds);
+      entry.max.distance = Math.max(entry.max.distance, session.distance);
       if (session.prs.length) prFeed.push(session);
 
       entry.sessions.push(session);
       bySession.set(`${w.id}:${exIdx}`, session);
       total.sessions.push(session);
-      total.sets += work.length;
-      total.volume += volume;
       if (session.pr) total.prs++;
-      if (prev) total.compared++;
-      if (session.status === 'up') total.up++;
+      if (comparable) total.compared++;
+      if (session.status !== 'new') total[session.status]++;
+
+      if (kind === 'cardio') {
+        total.cardio += session.seconds;
+        total.distance += session.distance;
+        week.cardio += session.seconds;
+        week.distance += session.distance;
+        day.cardio += session.seconds;
+        return;
+      }
+      const count = session.work.length;
       const muscle = entry.info.muscle;
-      total.muscles[muscle] = (total.muscles[muscle] || 0) + work.length;
-      week.muscles[muscle] = (week.muscles[muscle] || 0) + work.length;
-      week.sets += work.length;
-      week.volume += volume;
-      day.sets += work.length;
+      total.sets += count;
+      total.volume += session.volume;
+      total.muscles[muscle] = (total.muscles[muscle] || 0) + count;
+      week.muscles[muscle] = (week.muscles[muscle] || 0) + count;
+      week.sets += count;
+      week.volume += session.volume;
+      day.sets += count;
     });
   }
   return (_analysis = { exercises, bySession, byWorkout, weeks, days, prFeed });
@@ -135,18 +205,25 @@ const PR_LABEL = {
   best: s => s.weighted ? `Est. 1RM ${num(s.best)} ${unit()}` : `${s.best} reps in a set`,
   weight: s => `Heaviest weight ${num(s.maxWeight)} ${unit()}`,
   volume: s => s.weighted ? `Session volume ${big(s.volume)} ${unit()}` : `${s.reps} total reps`,
+  time: s => s.kind === 'hold' ? `Longest hold ${fmtTime(s.best)}` : `Longest session ${fmtTime(s.seconds)}`,
+  distance: s => `Furthest ${num(s.distance, 2)} ${distUnit()}`,
 };
+
+// The record a session is best known for (a volume record only if nothing else)
+const mainPr = s => s.prs.find(p => p !== 'volume') || s.prs[0];
 
 // Totals for workouts dated from..to (inclusive)
 function windowTotals(from, to) {
   const { byWorkout } = analyse();
-  const out = { workouts: 0, sets: 0, volume: 0, duration: 0, muscles: {} };
+  const out = { workouts: 0, sets: 0, volume: 0, duration: 0, cardio: 0, distance: 0, muscles: {} };
   for (const w of state.workouts) {
     if (w.date < from || w.date > to) continue;
     const t = byWorkout.get(w.id);
     out.workouts++;
     out.sets += t.sets;
     out.volume += t.volume;
+    out.cardio += t.cardio;
+    out.distance += t.distance;
     out.duration += w.duration || 0;
     for (const [m, n] of Object.entries(t.muscles)) out.muscles[m] = (out.muscles[m] || 0) + n;
   }
@@ -175,6 +252,7 @@ function repMaxes(entry) {
   return REP_MAX_ROWS.map(n => {
     let actual = null;
     for (const s of entry.sessions) {
+      if (s.timed) continue;
       for (const set of s.work) {
         if (set.reps >= n && set.weight > 0 && (!actual || set.weight > actual.weight)) actual = { weight: set.weight, reps: set.reps, date: s.date };
       }
@@ -264,7 +342,8 @@ function nextRoutine() {
     .sort((a, b) => a.last.localeCompare(b.last))[0];
 }
 
-// Short plain-language observations for the dashboard. tone: 'good' | 'bad' | 'info'
+// Short plain-language observations for the dashboard.
+// tone: 'good' (green), 'bad' (red), 'flat' (a stall, neutral) or 'info'
 function insights() {
   const out = [];
   const a = analyse();
@@ -283,7 +362,8 @@ function insights() {
   let top = null;
   for (const e of recent) {
     const span = e.sessions.filter(x => daysBetween(x.date, today) <= 42);
-    if (span.length < 3 || !span[0].best) continue;
+    // Cardio is left out: its headline number can switch between time and distance
+    if (span.length < 3 || !span[0].best || span.some(x => x.kind === 'cardio')) continue;
     const pct = (span[span.length - 1].best - span[0].best) / span[0].best * 100;
     if (!top || pct > top.pct) top = { e, pct, n: span.length };
   }
@@ -292,12 +372,18 @@ function insights() {
   }
 
   const stalls = recent.map(e => {
-    let n = 0;
-    for (let i = e.sessions.length - 1; i > 0 && e.sessions[i].status !== 'up'; i--) n++;
-    return { e, n };
+    let n = 0, dropped = false;
+    for (let i = e.sessions.length - 1; i > 0 && e.sessions[i].status !== 'up'; i--) {
+      n++;
+      if (e.sessions[i].status === 'down') dropped = true;
+    }
+    return { e, n, dropped };
   }).filter(x => x.n >= 2).sort((x, y) => y.n - x.n);
-  for (const { e, n } of stalls.slice(0, 2)) {
-    out.push({ tone: 'bad', key: e.key, html: `<strong>${esc(e.name)}</strong> hasn't improved in ${n} sessions. Drop the weight slightly and build back up.` });
+  for (const { e, n, dropped } of stalls.slice(0, 2)) {
+    out.push({
+      tone: dropped ? 'bad' : 'flat', key: e.key,
+      html: `<strong>${esc(e.name)}</strong> hasn't improved in ${n} sessions. ${e.info.kind ? 'A small push next time gets it moving again.' : 'Drop the weight slightly and build back up.'}`,
+    });
   }
 
   const lastTrained = {};
@@ -325,7 +411,8 @@ function insights() {
 function achievements() {
   const a = analyse();
   const total = state.workouts.length;
-  const volume = sum([...a.weeks.values()], w => w.volume);
+  const allWeeks = [...a.weeks.values()];
+  const volume = sum(allWeeks, w => w.volume);
   const prs = a.prFeed.filter(s => s.pr).length;
   const streak = streaks().best;
   const body = bodyStats().latest;
@@ -333,7 +420,9 @@ function achievements() {
     const e = a.exercises.get(name);
     return e && body ? e.max.best / (body.weight * mult) : 0;
   };
-  const muscleSpread = Math.max(0, ...[...a.weeks.values()].map(w => Object.keys(w.muscles).filter(m => m !== 'Other').length));
+  const muscleSpread = Math.max(0, ...allWeeks.map(w => Object.keys(w.muscles).filter(m => m !== 'Other').length));
+  const cardioWeek = Math.max(0, ...allWeeks.map(w => w.cardio));
+  const distance = sum(allWeeks, w => w.distance);
   const u = unit();
   return [
     ['🎯', 'First rep', 'Log your first workout', total / 1],
@@ -349,6 +438,8 @@ function achievements() {
     ['🚚', 'Truck mover', `Lift 250,000 ${u} in total`, volume / 250000],
     ['⚖️', 'Weigh-in habit', 'Log 8 weigh-ins', state.bodyweights.length / 8],
     ['🧩', 'All-rounder', 'Train 8 muscle groups in one week', muscleSpread / 8],
+    ['🏃', 'Cardio hour', 'Do 60 minutes of cardio in one week', cardioWeek / 3600],
+    ['🛣️', 'Distance club', `Cover 50 ${distUnit()} of cardio in total`, distance / 50],
     ['🛋️', 'Bodyweight bench', 'Bench press your bodyweight (est. 1RM)', ratio('bench press', 1)],
     ['🦵', 'Squat 1.5×', 'Squat 1.5× your bodyweight (est. 1RM)', ratio('squat', 1.5)],
     ['🏋️', 'Deadlift 2×', 'Deadlift 2× your bodyweight (est. 1RM)', ratio('deadlift', 2)],

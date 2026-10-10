@@ -15,12 +15,100 @@ function exerciseListHtml() {
     return `<button class="ex-row ${s.status}${e.key === ui.exercise.key ? ' on' : ''}" data-action="ex-select" data-key="${esc(e.key)}">
       <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${e.info.muscle} · ${relDay(s.date)}</span></span>
       ${sparkline(e.sessions.slice(-12).map(x => x.best), s.status, 64, 24)}
-      <span class="delta ${s.status === 'new' ? 'same' : s.status}">${s.pr ? '★' : { up: '▲', down: '▼', flat: '■', new: '●' }[s.status]}</span>
+      <span class="delta ${s.status}">${s.pr ? '★' : { up: '▲', down: '▼', flat: '■', new: '●' }[s.status]}</span>
     </button>`;
   }).join('');
 }
 
+const CHART_LEGEND = `<p class="legend">
+    <span class="key shape up">▲</span>Better than the session before
+    <span class="key shape down">▼</span>Worse
+    <span class="key shape flat">■</span>No change
+  </p>`;
+
+// Progress page for cardio and holds: time, distance and speed instead of weight
+function timedDetail(entry) {
+  const e = ui.exercise;
+  const du = distUnit();
+  const all = entry.sessions.filter(s => s.timed);
+  const latest = lastOf(all);
+  const cardio = latest.kind === 'cardio';
+  const metrics = cardio
+    ? [['seconds', 'Time'], ['distance', 'Distance'], ['speed', 'Speed']]
+    : [['best', 'Longest hold'], ['seconds', 'Total time']];
+  if (!metrics.some(([k]) => k === e.metric)) e.metric = metrics[0][0];
+  const metricLabel = metrics.find(([k]) => k === e.metric)[1];
+  const [value, metricUnit] = {
+    seconds: cardio ? [s => s.seconds / 60, 'min'] : [s => s.seconds, 'sec'],
+    best: [s => s.best, 'sec'],
+    distance: [s => s.distance, du],
+    speed: [s => s.speed, `${du}/h`],
+  }[e.metric];
+
+  const days = EX_RANGE_DAYS[e.range];
+  let sessions = days ? all.filter(s => s.date >= addDays(isoDate(), -days)) : all;
+  if (e.metric === 'distance' || e.metric === 'speed') sessions = sessions.filter(s => s.distance > 0);
+  const points = sessions.map((s, i) => {
+    const v = Math.round(value(s) * 100) / 100;
+    const before = i ? Math.round(value(sessions[i - 1]) * 100) / 100 : null;
+    const status = before == null ? 'new' : v > before ? 'up' : v < before ? 'down' : 'flat';
+    return { date: s.date, value: v, status, tip: `${num(v, 2)} ${metricUnit}|${fmtDate(s.date, 'weekday')}|${fmtSets(s.sets)}` };
+  });
+
+  const rec = entry.records;
+  const first = all[0];
+  const totalSeconds = sum(all, s => s.seconds);
+  const totalDistance = sum(all, s => s.distance);
+  const pace = s => s.distance > 0 ? `${fmtClock(s.seconds / s.distance)} /${du}` : '–';
+  const tiles = (cardio ? [
+    tile('Longest session', fmtTime(rec.time.seconds), fmtDate(rec.time.date, 'short')),
+    tile('Furthest', rec.distance ? `${num(rec.distance.distance, 2)}<small> ${du}</small>` : '–', rec.distance ? fmtDate(rec.distance.date, 'short') : 'Add a distance to track this'),
+    tile('Best pace', rec.speed ? pace(rec.speed) : '–', rec.speed ? `${num(rec.speed.speed)} ${du}/h · ${fmtDate(rec.speed.date, 'short')}` : 'Needs a distance'),
+    tile('Total time', fmtDuration(totalSeconds), `${plural(all.length, 'session')}`),
+    tile('Total distance', totalDistance ? `${num(totalDistance)}<small> ${du}</small>` : '–', `Since ${fmtDate(first.date, 'short')}`),
+  ] : [
+    tile('Longest hold', fmtTime(rec.best.best), fmtDate(rec.best.date, 'short')),
+    tile('Most in a session', fmtTime(rec.time.seconds), fmtDate(rec.time.date, 'short')),
+    tile('Sessions', `${all.length}`, `Since ${fmtDate(first.date, 'short')}`),
+    tile('Since first session', all.length > 1 && first.best ? `${signed((latest.best - first.best) / first.best * 100)}%` : '–',
+      all.length > 1 ? `${fmtTime(first.best)} → ${fmtTime(latest.best)}` : 'One session so far'),
+  ]).map(t => `<div class="c-fit">${t}</div>`).join('');
+
+  const rows = [...all].reverse().slice(0, 20).map(s => `<tr>
+      <td class="nowrap">${fmtDate(s.date, 'short')}</td>
+      <td>${fmtSets(s.sets)}</td>
+      ${cardio
+        ? `<td class="num nowrap">${fmtTime(s.seconds)}</td><td class="num nowrap hide-s">${s.distance ? `${num(s.distance, 2)} ${du}` : '–'}</td><td class="num nowrap hide-s">${pace(s)}</td>`
+        : `<td class="num nowrap">${fmtTime(s.best)}</td><td class="num nowrap hide-s">${fmtTime(s.seconds)}</td>`}
+      <td class="right">${badge(s.status, s.pr)}</td>
+    </tr>`).join('');
+
+  return `<section class="card">
+      <div class="card-head wrap">
+        <div><h2>${esc(entry.name)}</h2><span class="muted small">${esc(entry.info.muscle)}${entry.info.equipment ? ` · ${esc(entry.info.equipment)}` : ''} · ${plural(all.length, 'session')}</span></div>
+        ${badge(latest.status, latest.pr)}
+      </div>
+      <div class="toolbar">
+        ${segmented('ex-metric', metrics, e.metric)}
+        ${segmented('ex-range', EX_RANGES, e.range)}
+      </div>
+      ${chartSlot({ points, unit: metricUnit, height: 260, label: `${entry.name}: ${metricLabel}` })}
+      ${CHART_LEGEND}
+    </section>
+    <div class="tile-row">${tiles}</div>
+    <section class="card">
+      <div class="card-head"><h3>Sessions</h3><span class="muted small">Newest first</span></div>
+      <div class="table-wrap scroll-y"><table class="table">
+        <thead><tr><th>Date</th><th>${cardio ? 'Logged' : 'Holds'}</th>${cardio
+          ? '<th class="num">Time</th><th class="num hide-s">Distance</th><th class="num hide-s">Pace</th>'
+          : '<th class="num">Longest</th><th class="num hide-s">Total</th>'}<th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </section>`;
+}
+
 function exerciseDetail(entry) {
+  if (lastOf(entry.sessions).timed) return timedDetail(entry);
   const e = ui.exercise;
   const u = unit();
   const weighted = entry.sessions.some(s => s.weighted);
@@ -80,11 +168,7 @@ function exerciseDetail(entry) {
         ${segmented('ex-range', EX_RANGES, e.range)}
       </div>
       ${chartSlot({ points, unit: metricUnit, height: 260, label: `${entry.name}: ${metricLabel}` })}
-      <p class="legend">
-        <span class="key shape up">▲</span>Better than the session before
-        <span class="key shape down">▼</span>Worse
-        <span class="key shape down">■</span>No change
-      </p>
+      ${CHART_LEGEND}
     </section>
     <div class="tile-row">${tiles}</div>
     <div class="grid">

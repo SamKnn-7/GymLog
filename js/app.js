@@ -34,14 +34,16 @@ document.addEventListener('keydown', e => {
   if (el.id === 'bw-weight') return Actions['save-bw']();
   if (el.id === 'measure-value') return Actions['save-measure']();
 
-  // Logger: Enter moves weight -> reps -> done -> next set
+  // Logger: Enter moves to the next box in the set, then ticks it and drops to the next set
   if (el.dataset.input === 'set-field') {
     const row = el.closest('tr');
-    if (el.dataset.key === 'weight') return $('[data-key="reps"]', row).focus();
+    const boxes = $$('[data-input="set-field"]', row);
+    const after = boxes[boxes.indexOf(el) + 1];
+    if (after) return after.focus();
     const { ei, si } = row.dataset;
     const done = $('.done-btn', row);
     if (done && done.getAttribute('aria-pressed') !== 'true') done.click();
-    const next = $(`tr[data-ei="${ei}"][data-si="${Number(si) + 1}"] [data-key="weight"]`);
+    const next = $(`tr[data-ei="${ei}"][data-si="${Number(si) + 1}"] [data-input="set-field"]`);
     if (next) next.focus();
   }
 });

@@ -106,6 +106,7 @@ Views.body = {
           <p class="legend">
             <span class="key shape up">▲</span>Moving toward your goal
             <span class="key shape down">▼</span>Away from it
+            <span class="key shape flat">■</span>No change
             <span class="key dash"></span>Smoothed trend
             ${b.target ? '<span class="key dash target"></span>Target' : ''}
           </p>

@@ -3,14 +3,29 @@
 // The workout page has two states. With nothing in progress it is a launcher
 // (routines and templates). Otherwise state.active holds the thing being
 // edited: a workout (new or old) or a routine, all through the same editor.
+//
+// Exercises come in three kinds. Strength (kind null) is logged as weight and
+// reps. 'cardio' is logged as a time plus an optional distance, and 'hold'
+// (planks and the like) as a time only. In the editor a timed set keeps what
+// was typed in `time` and `distance`; saved sets store `seconds`.
 
 // ---------- building state.active ----------
 
-function blankSet(target) {
-  const s = { reps: '', weight: '', type: 'normal', done: false };
+const kindOf = name => exerciseInfo(name).kind || null;
+
+function blankSet(kind, target) {
+  const s = kind ? { time: '', distance: '', type: 'normal', done: false } : { reps: '', weight: '', type: 'normal', done: false };
   if (target) s.target = target;
   return s;
 }
+
+// A saved set's numbers, as the greyed-out target of a new one
+const targetFrom = (kind, s) => kind ? { seconds: s.seconds || 0, distance: s.distance || '' } : { reps: s.reps, weight: s.weight };
+
+// A saved set, as editable values
+const editable = (kind, s, done) => kind
+  ? { time: timeField(s.seconds, kind), distance: s.distance || '', type: 'normal', done }
+  : { reps: s.reps || '', weight: s.weight || '', type: s.type || 'normal', done };
 
 function replaceActiveOk() {
   const a = state.active;
@@ -28,11 +43,10 @@ function startWorkout(source) {
     name: source ? source.name : '',
     notes: '',
     startedAt: Date.now(),
-    exercises: !source ? [] : source.exercises.map(ex => ({
-      name: ex.name,
-      notes: '',
-      sets: ex.sets.map(s => ({ ...blankSet({ reps: s.reps, weight: s.weight }), type: s.type || 'normal' })),
-    })),
+    exercises: !source ? [] : source.exercises.map(ex => {
+      const kind = ex.kind || null;
+      return { name: ex.name, notes: '', kind, sets: ex.sets.map(s => ({ ...blankSet(kind, targetFrom(kind, s)), type: kind ? 'normal' : s.type || 'normal' })) };
+    }),
   };
   stopTimer();
   persist();
@@ -48,11 +62,7 @@ function editWorkout(w) {
     name: w.name,
     notes: w.notes || '',
     durationMin: w.duration ? Math.round(w.duration / 60) : '',
-    exercises: w.exercises.map(ex => ({
-      name: ex.name,
-      notes: ex.notes || '',
-      sets: ex.sets.map(s => ({ reps: s.reps, weight: s.weight || '', type: s.type || 'normal', done: true })),
-    })),
+    exercises: w.exercises.map(ex => ({ name: ex.name, notes: ex.notes || '', kind: ex.kind || null, sets: ex.sets.map(s => editable(ex.kind, s, true)) })),
   };
   persist();
   go('workout');
@@ -64,11 +74,7 @@ function editRoutine(r) {
     mode: 'routine',
     routineId: r ? r.id : null,
     name: r ? r.name : '',
-    exercises: !r ? [] : r.exercises.map(ex => ({
-      name: ex.name,
-      notes: '',
-      sets: ex.sets.map(s => ({ reps: s.reps || '', weight: s.weight || '', type: s.type || 'normal', done: false })),
-    })),
+    exercises: !r ? [] : r.exercises.map(ex => ({ name: ex.name, notes: '', kind: ex.kind || null, sets: ex.sets.map(s => editable(ex.kind, s, false)) })),
   };
   persist();
   go('workout');
@@ -78,10 +84,12 @@ function routineFrom(source) {
   return {
     id: Date.now(),
     name: source.name,
-    exercises: source.exercises.map(ex => ({
-      name: ex.name,
-      sets: ex.sets.map(s => ({ reps: s.reps || '', weight: s.weight || '', type: s.type || 'normal' })),
-    })),
+    exercises: source.exercises.map(ex => {
+      const out = { name: ex.name };
+      if (ex.kind) Object.assign(out, { kind: ex.kind, sets: ex.sets.map(s => ({ seconds: s.seconds || '', distance: s.distance || '', type: 'normal' })) });
+      else out.sets = ex.sets.map(s => ({ reps: s.reps || '', weight: s.weight || '', type: s.type || 'normal' }));
+      return out;
+    }),
   };
 }
 
@@ -90,17 +98,18 @@ const hasRoutine = name => state.routines.some(r => norm(r.name) === norm(name))
 // ---------- comparing against last time ----------
 
 // The session to beat: the latest one before the workout being logged
-function prevFor(name) {
-  const entry = analyse().exercises.get(norm(name));
+function prevFor(ex) {
+  const entry = analyse().exercises.get(norm(ex.name));
   if (!entry) return null;
   const a = state.active;
+  const kind = ex.kind || null;
   if (a.editingId) {
     const cur = entry.sessions.find(s => s.wid === a.editingId);
     if (cur) return cur.prev;
   }
   for (let i = entry.sessions.length - 1; i >= 0; i--) {
     const s = entry.sessions[i];
-    if (s.wid !== a.editingId && (a.editingId ? s.date < a.date : s.date <= a.date)) return s;
+    if (s.kind === kind && s.wid !== a.editingId && (a.editingId ? s.date < a.date : s.date <= a.date)) return s;
   }
   return null;
 }
@@ -114,20 +123,49 @@ function matchPrev(prev, sets, si) {
   return (warm ? prev.warm : prev.work)[rank] || null;
 }
 
-function compareSet(s, p) {
-  if (!p || !(Number(s.reps) > 0)) return null;
-  const cur = { reps: Number(s.reps), weight: Number(s.weight) || 0 };
-  const d = setScore(cur) - setScore(p);
-  const dw = cur.weight - p.weight;
-  const dr = cur.reps - p.reps;
+// How the set being typed compares with last time's: { status, text } or null
+function compareSet(ex, s, p) {
+  if (!p) return null;
   const parts = [];
-  if (Math.abs(dw) > EPS) parts.push(`${signed(dw, 2)} ${unit()}`);
-  if (dr) parts.push(`${signed(dr, 0)} rep${Math.abs(dr) === 1 ? '' : 's'}`);
-  return { status: d > EPS ? 'up' : d < -EPS ? 'down' : 'same', text: parts.join(', ') || 'Matched' };
+  let status;
+  if (ex.kind) {
+    const seconds = parseTime(s.time, ex.kind);
+    if (!seconds) return null;
+    const dist = Number(s.distance) || 0;
+    const dt = seconds - p.seconds;
+    const dd = dist - (p.distance || 0);
+    if (ex.kind === 'cardio' && dist > 0 && p.distance > 0) {
+      // Further is better; over the same distance, faster is better
+      status = Math.abs(dd) > EPS ? (dd > 0 ? 'up' : 'down') : dt < 0 ? 'up' : dt > 0 ? 'down' : 'same';
+    } else {
+      status = dt > 0 ? 'up' : dt < 0 ? 'down' : 'same';
+    }
+    if (Math.abs(dd) > EPS) parts.push(`${signed(dd, 2)} ${distUnit()}`);
+    if (dt) parts.push(`${dt > 0 ? '+' : '−'}${fmtTime(Math.abs(dt))}`);
+  } else {
+    if (!(Number(s.reps) > 0)) return null;
+    const cur = { reps: Number(s.reps), weight: Number(s.weight) || 0 };
+    const d = setScore(cur) - setScore(p);
+    const dw = cur.weight - p.weight;
+    const dr = cur.reps - p.reps;
+    status = d > EPS ? 'up' : d < -EPS ? 'down' : 'same';
+    if (Math.abs(dw) > EPS) parts.push(`${signed(dw, 2)} ${unit()}`);
+    if (dr) parts.push(`${signed(dr, 0)} rep${Math.abs(dr) === 1 ? '' : 's'}`);
+  }
+  return { status, text: parts.join(', ') || 'Matched' };
 }
 
 const CMP_MARK = { up: '▲', down: '▼', same: '=' };
 const cmpHtml = c => c ? `<span class="delta ${c.status}">${CMP_MARK[c.status]} ${c.text}</span>` : '';
+
+// The greyed-out numbers in an empty set: last time's, else the routine's target
+function hintFor(ex, s, p) {
+  if (ex.kind) {
+    const src = p || s.target;
+    return src ? { time: timeField(src.seconds, ex.kind), distance: src.distance || '' } : {};
+  }
+  return p || s.target || {};
+}
 
 // ---------- the editor ----------
 
@@ -135,13 +173,19 @@ function setRowHtml(a, ex, ei, si, prev, label) {
   const s = ex.sets[si];
   const routine = a.mode === 'routine';
   const p = matchPrev(prev, ex.sets, si);
-  const hint = p || s.target || {};
-  const cmp = routine ? null : compareSet(s, p);
+  const hint = hintFor(ex, s, p);
+  const cmp = routine ? null : compareSet(ex, s, p);
+  const fields = ex.kind
+    ? `<td ${ex.kind === 'hold' ? 'colspan="2"' : ''}><input type="text" inputmode="decimal" autocomplete="off" data-input="set-field" data-key="time" value="${esc(s.time)}" placeholder="${esc(hint.time || '')}" aria-label="Time"></td>
+      ${ex.kind === 'cardio' ? `<td><input type="number" inputmode="decimal" step="0.1" min="0" data-input="set-field" data-key="distance" value="${esc(s.distance)}" placeholder="${esc(hint.distance || '')}" aria-label="Distance"></td>` : ''}`
+    : `<td><input type="number" inputmode="decimal" step="0.5" min="0" data-input="set-field" data-key="weight" value="${esc(s.weight)}" placeholder="${esc(hint.weight || '')}" aria-label="Weight"></td>
+      <td><input type="number" inputmode="numeric" step="1" min="0" data-input="set-field" data-key="reps" value="${esc(s.reps)}" placeholder="${esc(hint.reps || '')}" aria-label="Reps"></td>`;
   return `<tr class="set-row t-${s.type}${s.done ? ' done' : ''}${cmp ? ` ${cmp.status}` : ''}" data-ei="${ei}" data-si="${si}">
-    <td><button class="set-type" data-action="set-type" data-tip="${SET_TYPES[s.type].title}|Tap to change the set type">${label}</button></td>
+    <td>${ex.kind
+      ? `<span class="set-type plain">${label}</span>`
+      : `<button class="set-type" data-action="set-type" data-tip="${SET_TYPES[s.type].title}|Tap to change the set type">${label}</button>`}</td>
     ${routine ? '' : `<td class="prev">${p ? fmtSetShort(p) : '–'}</td>`}
-    <td><input type="number" inputmode="decimal" step="0.5" min="0" data-input="set-field" data-key="weight" value="${esc(s.weight)}" placeholder="${esc(hint.weight || '')}" aria-label="Weight"></td>
-    <td><input type="number" inputmode="numeric" step="1" min="0" data-input="set-field" data-key="reps" value="${esc(s.reps)}" placeholder="${esc(hint.reps || '')}" aria-label="Reps"></td>
+    ${fields}
     ${routine ? '' : `<td class="cmp">${cmpHtml(cmp)}</td>
     <td><button class="done-btn" data-action="set-done" aria-pressed="${s.done}" aria-label="Mark set as done">${icon('check', 16)}</button></td>`}
     <td><button class="icon-btn" data-action="rm-set" aria-label="Remove set">${icon('x', 14)}</button></td>
@@ -152,15 +196,18 @@ function exerciseCardHtml(a, ex, ei) {
   const routine = a.mode === 'routine';
   const info = exerciseInfo(ex.name);
   const entry = analyse().exercises.get(norm(ex.name));
-  const prev = routine ? null : prevFor(ex.name);
+  const prev = routine ? null : prevFor(ex);
   let n = 0;
   const rows = ex.sets.map((s, si) => setRowHtml(a, ex, ei, si, prev, s.type === 'normal' ? ++n : SET_TYPES[s.type].label)).join('');
   const meta = routine ? ''
     : prev ? `<p class="muted small ex-meta">Last time (${fmtDate(prev.date, 'short')}): ${fmtSets(prev.work)} · Record ${fmtSet(entry.records.best.bestSet)}</p>`
-      : '<p class="muted small ex-meta">First time logging this exercise.</p>';
+      : `<p class="muted small ex-meta">First time logging this exercise.${ex.kind === 'cardio' ? ' Type minutes (30) or minutes:seconds (22:30). Distance is optional.' : ex.kind === 'hold' ? ' Type seconds (45) or minutes:seconds (1:30).' : ''}</p>`;
+  const columns = ex.kind === 'cardio' ? `<th>Time (min)</th><th>${distUnit()}</th>`
+    : ex.kind === 'hold' ? '<th colspan="2">Time (sec)</th>'
+      : `<th>${unit()}</th><th>Reps</th>`;
   return `<section class="card ex-card" data-ei="${ei}">
     <div class="card-head">
-      <div><h3>${esc(ex.name)}</h3><span class="muted small">${info.muscle}${info.equipment ? ` · ${info.equipment}` : ''}</span></div>
+      <div><h3>${esc(ex.name)}</h3><span class="muted small">${esc(info.muscle)}${info.equipment ? ` · ${esc(info.equipment)}` : ''}</span></div>
       <div class="row gap-xs">
         ${entry ? `<button class="icon-btn" data-action="ex-history" data-tip="Past sessions">${icon('chart', 16)}</button>` : ''}
         <button class="icon-btn" data-action="move-ex" data-dir="-1" ${ei === 0 ? 'disabled' : ''} aria-label="Move up">${icon('up', 16)}</button>
@@ -170,7 +217,7 @@ function exerciseCardHtml(a, ex, ei) {
     </div>
     ${meta}
     <table class="sets">
-      <thead><tr><th>Set</th>${routine ? '' : '<th>Previous</th>'}<th>${unit()}</th><th>Reps</th>${routine ? '' : '<th class="cmp">vs last time</th><th>Done</th>'}<th></th></tr></thead>
+      <thead><tr><th>Set</th>${routine ? '' : '<th>Previous</th>'}${columns}${routine ? '' : '<th class="cmp">vs last time</th><th>Done</th>'}<th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="row gap-s wrap">
@@ -181,16 +228,16 @@ function exerciseCardHtml(a, ex, ei) {
 }
 
 function liveStats(a) {
-  const t = { total: 0, done: 0, volume: 0, up: 0, same: 0, down: 0 };
+  const t = { total: 0, done: 0, volume: 0, cardio: 0, up: 0, same: 0, down: 0 };
   for (const ex of a.exercises) {
-    const prev = prevFor(ex.name);
+    const prev = prevFor(ex);
     ex.sets.forEach((s, si) => {
       if (s.type === 'warmup') return;
-      const reps = Number(s.reps) || 0;
       t.total++;
       if (s.done) t.done++;
-      if (reps > 0) t.volume += reps * (Number(s.weight) || 0);
-      const c = compareSet(s, matchPrev(prev, ex.sets, si));
+      if (ex.kind === 'cardio') t.cardio += parseTime(s.time, ex.kind);
+      else if (!ex.kind && Number(s.reps) > 0) t.volume += Number(s.reps) * (Number(s.weight) || 0);
+      const c = compareSet(ex, s, matchPrev(prev, ex.sets, si));
       if (c) t[c.status]++;
     });
   }
@@ -204,6 +251,7 @@ function liveSummaryHtml(a) {
     <div class="mini-stats">
       <div><strong>${a.exercises.length}</strong><span>Exercises</span></div>
       <div><strong>${compact(t.volume)}</strong><span>${unit()} lifted</span></div>
+      ${t.cardio ? `<div><strong>${Math.round(t.cardio / 60)}</strong><span>min cardio</span></div>` : ''}
       <div><strong><span class="delta up">▲ ${t.up}</span> <span class="delta same">= ${t.same}</span> <span class="delta down">▼ ${t.down}</span></strong><span>Sets vs last time</span></div>
     </div>`;
 }
@@ -219,7 +267,7 @@ function activeView(a) {
     ? `<section class="card workout-head">
         <div class="card-head"><h3>${a.routineId ? 'Edit routine' : 'New routine'}</h3></div>
         <input class="title-input" placeholder="Routine name, e.g. Push day" data-input="active-field" data-key="name" value="${esc(a.name)}" aria-label="Routine name">
-        <p class="muted small">Add exercises and the sets you plan to do. Reps and weight are optional targets. When you start the routine you'll also see what you did last time.</p>
+        <p class="muted small">Add exercises and the sets you plan to do. The numbers are optional targets. When you start the routine you'll also see what you did last time.</p>
         <div class="row end gap-s">
           <button class="btn" data-action="discard-active">Cancel</button>
           <button class="btn primary" data-action="save-routine">${icon('check', 16)} Save routine</button>
@@ -337,12 +385,14 @@ Views.workout = {
 // ---------- exercise picker ----------
 
 function pickerChips() {
-  return ['All', ...MUSCLES].map(m =>
-    `<button class="chip ${ui.picker.muscle === m ? 'on' : ''}" data-action="picker-muscle" data-value="${m}">${m}</button>`).join('');
+  const p = ui.picker;
+  const chip = (action, value, label, on) => `<button class="chip ${on ? 'on' : ''}" data-action="${action}" data-value="${value}">${label}</button>`;
+  return `<div class="chips">${['All', ...CATEGORIES].map(m => chip('picker-muscle', m, m, p.muscle === m)).join('')}</div>
+    <div class="chips">${['Any', ...EQUIPMENT].map(e => chip('picker-equipment', e, e === 'Any' ? 'Any equipment' : e, p.equipment === e)).join('')}</div>`;
 }
 
 function pickerList() {
-  const { q, muscle } = ui.picker;
+  const { q, muscle, equipment } = ui.picker;
   const a = analyse();
   const nq = norm(q);
   const inWorkout = new Set(state.active.exercises.map(e => norm(e.name)));
@@ -350,27 +400,38 @@ function pickerList() {
   // Names that only exist in old workouts still deserve a row
   for (const e of a.exercises.values()) if (!exerciseIndex().has(e.key)) list.push(e.info);
   if (muscle !== 'All') list = list.filter(e => e.muscle === muscle);
-  if (nq) list = list.filter(e => norm(e.name).includes(nq));
+  if (equipment !== 'Any') list = list.filter(e => e.equipment === equipment);
+  if (nq) list = list.filter(e => norm(`${e.name} ${e.muscle} ${e.equipment}`).includes(nq));
   const lastDate = e => a.exercises.has(norm(e.name)) ? lastOf(a.exercises.get(norm(e.name)).sessions).date : '';
   list.sort((x, y) => lastDate(y).localeCompare(lastDate(x)) || x.name.localeCompare(y.name));
 
   const rows = list.map(e => `<button class="picker-row" data-action="pick-exercise" data-name="${esc(e.name)}">
-      <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${e.muscle}${e.equipment ? ` · ${e.equipment}` : ''}</span></span>
+      <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${esc(e.muscle)}${e.equipment ? ` · ${esc(e.equipment)}` : ''}${e.kind ? ' · timed' : ''}</span></span>
       <span class="muted small nowrap">${inWorkout.has(norm(e.name)) ? '✓ Added' : lastDate(e) ? relDay(lastDate(e)) : ''}</span>
     </button>`).join('');
   const known = exerciseIndex().has(nq) || a.exercises.has(nq);
   const create = nq && !known ? `<div class="picker-create">
       <span>Add <strong>“${esc(q.trim())}”</strong> as a new exercise</span>
-      <select id="picker-new-muscle" aria-label="Muscle group">${[...MUSCLES, 'Other'].map(m => `<option ${m === muscle ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      <select id="picker-new-muscle" aria-label="Category">${[...CATEGORIES, 'Other'].map(m => `<option ${m === muscle ? 'selected' : ''}>${m}</option>`).join('')}</select>
       <button class="btn primary sm" data-action="create-exercise">Add</button>
     </div>` : '';
-  return (rows || (create ? '' : '<p class="muted small pad">No exercises match.</p>')) + create;
+  return `<p class="muted small picker-count">${plural(list.length, 'exercise')}</p>`
+    + (rows || (create ? '' : '<p class="muted small pad">No exercises match.</p>')) + create;
+}
+
+// Mark the tapped filter chip in place (so its row keeps its scroll position) and refilter
+function selectChip(el) {
+  for (const chip of el.parentElement.children) chip.classList.toggle('on', chip === el);
+  $('#picker-list').innerHTML = pickerList();
 }
 
 function addExerciseToActive(name) {
-  const prev = state.active.mode === 'workout' ? prevFor(name) : null;
-  const sets = Array.from({ length: prev ? clamp(prev.work.length, 1, 8) : 3 }, () => blankSet());
-  state.active.exercises.push({ name, notes: '', sets });
+  const kind = kindOf(name);
+  const ex = { name, notes: '', kind, sets: [] };
+  const prev = state.active.mode === 'workout' ? prevFor(ex) : null;
+  const count = prev ? clamp(prev.work.length, 1, 8) : kind === 'cardio' ? 1 : 3;
+  ex.sets = Array.from({ length: count }, () => blankSet(kind));
+  state.active.exercises.push(ex);
   closeModal();
   persist();
   render();
@@ -379,12 +440,13 @@ function addExerciseToActive(name) {
 }
 
 Actions['open-picker'] = () => {
-  ui.picker = { q: '', muscle: 'All' };
+  ui.picker = { q: '', muscle: 'All', equipment: 'Any' };
   openModal(`<div class="modal-head"><h2>Add exercise</h2><button class="icon-btn" data-action="close-modal" aria-label="Close">${icon('x')}</button></div>
     <div class="search">${icon('search', 16)}<input id="picker-q" type="search" placeholder="Search or type a new exercise" data-input="picker-q" autocomplete="off"></div>
-    <div class="chips" id="picker-chips">${pickerChips()}</div>
+    <div class="col gap-chips" id="picker-chips">${pickerChips()}</div>
     <div class="picker-list" id="picker-list">${pickerList()}</div>`, 'picker');
-  $('#picker-q').focus();
+  // No autofocus on touch screens, where it would throw the keyboard over the list
+  if (matchMedia('(hover: hover)').matches) $('#picker-q').focus();
 };
 
 Inputs['picker-q'] = el => {
@@ -394,8 +456,12 @@ Inputs['picker-q'] = el => {
 
 Actions['picker-muscle'] = el => {
   ui.picker.muscle = el.dataset.value;
-  $('#picker-chips').innerHTML = pickerChips();
-  $('#picker-list').innerHTML = pickerList();
+  selectChip(el);
+};
+
+Actions['picker-equipment'] = el => {
+  ui.picker.equipment = el.dataset.value;
+  selectChip(el);
 };
 
 Actions['pick-exercise'] = el => addExerciseToActive(el.dataset.name);
@@ -439,7 +505,7 @@ Actions['save-template'] = el => {
 // From History or the finish summary: turn a logged workout into a routine
 Actions['save-as-routine'] = el => {
   const w = workoutById(el);
-  const routine = routineFrom({ name: w.name, exercises: w.exercises.map(ex => ({ name: ex.name, sets: ex.sets })) });
+  const routine = routineFrom(w);
   const existing = state.routines.findIndex(r => norm(r.name) === norm(w.name));
   if (existing >= 0) {
     if (!confirm(`You already have a routine called “${w.name}”. Replace it with this workout?`)) return;
@@ -465,13 +531,19 @@ function rerenderActive() {
 }
 
 Actions['add-set'] = el => {
-  const sets = state.active.exercises[eiOf(el)].sets;
-  const prev = lastOf(sets);
+  const ex = state.active.exercises[eiOf(el)];
+  const prev = lastOf(ex.sets);
   // A new set repeats the one above it: same type and target, values left to fill in
-  const s = blankSet(prev && prev.target ? { ...prev.target } : prev && Number(prev.reps) > 0 ? { reps: prev.reps, weight: prev.weight } : null);
+  let target = null;
+  if (prev && prev.target) target = { ...prev.target };
+  else if (prev && ex.kind && parseTime(prev.time, ex.kind)) target = { seconds: parseTime(prev.time, ex.kind), distance: Number(prev.distance) || '' };
+  else if (prev && !ex.kind && Number(prev.reps) > 0) target = { reps: prev.reps, weight: prev.weight };
+  const s = blankSet(ex.kind, target);
   if (prev && prev.type !== 'warmup') s.type = prev.type;
-  if (state.active.mode === 'routine' && prev) { s.reps = prev.reps; s.weight = prev.weight; }
-  sets.push(s);
+  if (state.active.mode === 'routine' && prev) {
+    for (const key of ex.kind ? ['time', 'distance'] : ['reps', 'weight']) s[key] = prev[key];
+  }
+  ex.sets.push(s);
   rerenderActive();
 };
 
@@ -497,7 +569,8 @@ Actions['move-ex'] = el => {
 
 Actions['rm-ex'] = el => {
   const ex = state.active.exercises[eiOf(el)];
-  if (ex.sets.some(s => s.reps !== '') && !confirm(`Remove ${ex.name} and its sets?`)) return;
+  const started = ex.sets.some(s => (ex.kind ? s.time : s.reps) !== '');
+  if (started && !confirm(`Remove ${ex.name} and its sets?`)) return;
   state.active.exercises.splice(eiOf(el), 1);
   rerenderActive();
 };
@@ -510,25 +583,27 @@ Actions['set-done'] = el => {
   const s = ex.sets[si];
   if (!s.done) {
     // Ticking an empty set accepts the greyed-out numbers
-    const hint = matchPrev(prevFor(ex.name), ex.sets, si) || s.target || {};
-    if (s.reps === '' && hint.reps) s.reps = hint.reps;
-    if (s.weight === '' && hint.weight) s.weight = hint.weight;
-    if (!(Number(s.reps) > 0)) return toast('Enter the reps for this set first', 'bad');
+    const hint = hintFor(ex, s, matchPrev(prevFor(ex), ex.sets, si));
+    for (const key of ex.kind ? ['time', 'distance'] : ['reps', 'weight']) {
+      if (s[key] === '' && hint[key]) s[key] = hint[key];
+    }
+    const filled = ex.kind ? parseTime(s.time, ex.kind) > 0 : Number(s.reps) > 0;
+    if (!filled) return toast(`Enter the ${ex.kind ? 'time' : 'reps'} for this set first`, 'bad');
   }
   s.done = !s.done;
   rerenderActive();
   if (!s.done) return;
   const row = $(`tr[data-ei="${ei}"][data-si="${si}"]`);
   if (row) row.classList.add('just-done');
-  if (isLive(a) && state.settings.autoRest) startTimer(state.settings.restSeconds);
+  if (isLive(a) && state.settings.autoRest && ex.kind !== 'cardio') startTimer(state.settings.restSeconds);
   announcePr(ex, s);
 };
 
 // Celebrate the moment a set beats the all-time best, once per new high
 function announcePr(ex, s) {
   const entry = analyse().exercises.get(norm(ex.name));
-  if (!entry || state.active.editingId || s.type === 'warmup') return;
-  const sc = setScore({ reps: Number(s.reps), weight: Number(s.weight) || 0 });
+  if (!entry || state.active.editingId || s.type === 'warmup' || ex.kind === 'cardio') return;
+  const sc = ex.kind ? parseTime(s.time, ex.kind) : setScore({ reps: Number(s.reps), weight: Number(s.weight) || 0 });
   if (sc <= Math.max(entry.max.best, ex.prShown || 0) + EPS) return;
   ex.prShown = sc;
   persist();
@@ -550,7 +625,7 @@ Actions['ex-history'] = el => {
     </div>
     <div class="mini-stats">
       <div><strong>${fmtSet(rec.best.bestSet)}</strong><span>Best set</span></div>
-      <div><strong>${rec.best.weighted ? `${num(rec.best.best)} ${unit()}` : '–'}</strong><span>Est. 1RM</span></div>
+      ${rec.best.weighted ? `<div><strong>${num(rec.best.best)} ${unit()}</strong><span>Est. 1RM</span></div>` : ''}
       <div><strong>${sparkline(entry.sessions.slice(-12).map(s => s.best), lastOf(entry.sessions).status, 110, 30)}</strong><span>Trend</span></div>
     </div>
     <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Sets</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -567,7 +642,7 @@ Inputs['ex-note'] = el => {
   persist();
 };
 
-// Typing a weight or reps recolours the row in place; no re-render, so focus stays put
+// Typing in a set recolours the row in place; no re-render, so focus stays put
 Inputs['set-field'] = el => {
   const a = state.active;
   const ex = a.exercises[eiOf(el)];
@@ -576,7 +651,7 @@ Inputs['set-field'] = el => {
   s[el.dataset.key] = el.value;
   persist();
   if (a.mode !== 'workout') return;
-  const cmp = compareSet(s, matchPrev(prevFor(ex.name), ex.sets, si));
+  const cmp = compareSet(ex, s, matchPrev(prevFor(ex), ex.sets, si));
   const row = el.closest('tr');
   row.classList.remove('up', 'down', 'same');
   if (cmp) row.classList.add(cmp.status);
@@ -602,10 +677,12 @@ Actions['discard-active'] = () => {
 Actions['save-routine'] = () => {
   const a = state.active;
   const name = a.name.trim();
-  const exercises = a.exercises.filter(ex => ex.sets.length).map(ex => ({
-    name: ex.name,
-    sets: ex.sets.map(s => ({ reps: Math.floor(Number(s.reps)) || '', weight: Number(s.weight) || '', type: s.type })),
-  }));
+  const exercises = a.exercises.filter(ex => ex.sets.length).map(ex => {
+    const out = { name: ex.name };
+    if (ex.kind) Object.assign(out, { kind: ex.kind, sets: ex.sets.map(s => ({ seconds: parseTime(s.time, ex.kind) || '', distance: Number(s.distance) || '', type: 'normal' })) });
+    else out.sets = ex.sets.map(s => ({ reps: Math.floor(Number(s.reps)) || '', weight: Number(s.weight) || '', type: s.type }));
+    return out;
+  });
   if (!name) return toast('Give the routine a name', 'bad');
   if (!exercises.length) return toast('Add at least one exercise with a set', 'bad');
   const routine = { id: a.routineId || Date.now(), name, exercises };
@@ -624,14 +701,21 @@ function defaultWorkoutName() {
 
 Actions['finish-workout'] = () => {
   const a = state.active;
-  const exercises = a.exercises.map(ex => ({
-    name: ex.name,
-    notes: (ex.notes || '').trim(),
-    sets: ex.sets
-      .map(s => ({ reps: Math.floor(Number(s.reps)) || 0, weight: Math.max(0, Number(s.weight) || 0), type: s.type }))
-      .filter(s => s.reps > 0),
-  })).filter(ex => ex.sets.length);
-  if (!exercises.length) return toast('Enter the reps for at least one set first', 'bad');
+  const exercises = a.exercises.map(ex => {
+    const out = { name: ex.name, notes: (ex.notes || '').trim() };
+    if (ex.kind) {
+      out.kind = ex.kind;
+      out.sets = ex.sets
+        .map(s => ({ seconds: parseTime(s.time, ex.kind), distance: ex.kind === 'cardio' ? Math.max(0, Number(s.distance) || 0) : 0, type: 'normal' }))
+        .filter(s => s.seconds > 0);
+    } else {
+      out.sets = ex.sets
+        .map(s => ({ reps: Math.floor(Number(s.reps)) || 0, weight: Math.max(0, Number(s.weight) || 0), type: s.type }))
+        .filter(s => s.reps > 0);
+    }
+    return out;
+  }).filter(ex => ex.sets.length);
+  if (!exercises.length) return toast('Fill in at least one set first', 'bad');
 
   const workout = {
     id: a.editingId || Date.now(),
@@ -654,27 +738,34 @@ Actions['finish-workout'] = () => {
   else showSummary(workout);
 };
 
+// The ▲ ■ ▼ counts for one workout: improved, no change, declined
+function tallyHtml(t, words) {
+  return `<span class="delta up">▲ ${t.up}${words ? ' improved' : ''}</span>
+    ${t.flat ? `<span class="delta flat">■ ${t.flat}${words ? ' no change' : ''}</span>` : ''}
+    <span class="delta down">▼ ${t.down}${words ? ' declined' : ''}</span>`;
+}
+
 // Shown after finishing a workout
 function showSummary(w) {
   const t = analyse().byWorkout.get(w.id);
-  const down = t.compared - t.up;
   const headline = t.prs ? `${plural(t.prs, 'new personal record')}!`
     : t.compared ? `You improved on ${t.up} of ${plural(t.compared, 'exercise')}.`
       : 'First entries logged. Next time you’ll see how you compare.';
   const rows = t.sessions.map(s => `<li class="${s.status}">
       <span class="stack"><strong>${esc(s.name)}</strong>
-        <span class="muted small">Best set ${fmtSet(s.bestSet)}${s.prs.length ? ` · ${s.prs.map(p => PR_LABEL[p](s)).join(' · ')}` : ''}</span></span>
+        <span class="muted small">${s.timed ? fmtSets(s.sets) : `Best set ${fmtSet(s.bestSet)}`}${s.prs.length ? ` · ${s.prs.map(p => PR_LABEL[p](s)).join(' · ')}` : ''}</span></span>
       ${badge(s.status, s.pr)}
     </li>`).join('');
   openModal(`<div class="summary">
-      <div class="hero-icon">${t.prs ? '🏆' : down > t.up ? '💪' : '✅'}</div>
+      <div class="hero-icon">${t.prs ? '🏆' : t.down > t.up ? '💪' : '✅'}</div>
       <h2>${esc(w.name)} complete</h2>
       <p class="muted">${headline}</p>
       <div class="mini-stats">
-        <div><strong>${w.duration ? fmtDuration(w.duration) : '–'}</strong><span>Duration</span></div>
+        <div><strong>${w.duration >= 60 ? fmtDuration(w.duration) : '–'}</strong><span>Duration</span></div>
         <div><strong>${count(t.sets)}</strong><span>Sets</span></div>
-        <div><strong>${count(Math.round(t.volume))}</strong><span>${unit()} lifted</span></div>
-        <div><strong><span class="delta up">▲ ${t.up}</span> <span class="delta down">▼ ${down}</span></strong><span>vs last time</span></div>
+        ${t.volume ? `<div><strong>${count(Math.round(t.volume))}</strong><span>${unit()} lifted</span></div>` : ''}
+        ${t.cardio ? `<div><strong>${count(Math.round(t.cardio / 60))}</strong><span>min cardio</span></div>` : ''}
+        <div><strong>${tallyHtml(t)}</strong><span>vs last time</span></div>
       </div>
       <ul class="list status-list">${rows}</ul>
       <div class="row gap-s">

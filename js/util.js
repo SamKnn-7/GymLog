@@ -90,6 +90,32 @@ function fmtClock(seconds) {
   return h ? `${h}:${z(Math.floor(s / 60) % 60)}:${z(s % 60)}` : `${Math.floor(s / 60)}:${z(s % 60)}`;
 }
 
+// ---------- timed exercises (cardio and holds) ----------
+
+// Time as shown everywhere: 45s, 1:30, 30:00, 1:05:00
+const fmtTime = seconds => seconds < 60 ? `${Math.round(seconds)}s` : fmtClock(seconds);
+
+// Read a typed time into seconds. "22:30" always means minutes:seconds.
+// A plain number means minutes for cardio ("30", "22.5") and seconds for holds ("45").
+function parseTime(text, kind) {
+  const t = String(text ?? '').trim().replace(',', '.');
+  if (!t) return 0;
+  if (t.includes(':')) {
+    const parts = t.split(':').map(Number);
+    if (parts.some(n => !isFinite(n) || n < 0)) return 0;
+    return Math.round(parts.reduce((total, n) => total * 60 + n, 0));
+  }
+  const n = Number(t);
+  return isFinite(n) && n > 0 ? Math.round(kind === 'hold' ? n : n * 60) : 0;
+}
+
+// The reverse, for filling a time box: "45" for a hold, "30" or "22:30" for cardio
+function timeField(seconds, kind) {
+  if (!seconds) return '';
+  if (kind === 'hold') return String(seconds);
+  return seconds % 60 === 0 ? String(seconds / 60) : fmtClock(seconds);
+}
+
 // Small seeded random generator, so the sample data is the same every time
 function seededRandom(seed) {
   let a = seed;

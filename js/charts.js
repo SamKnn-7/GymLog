@@ -133,6 +133,15 @@ function ring(pct, size = 44, stroke = 5, cls = '') {
   </svg>`;
 }
 
+// What was done on one day, for tooltips: "15 sets · 20 min cardio"
+function dayLabel(day) {
+  const parts = [];
+  if (day.sets) parts.push(plural(day.sets, 'set'));
+  if (day.cardio) parts.push(`${Math.round(day.cardio / 60)} min cardio`);
+  if (day.workouts > 1) parts.push(`${day.workouts} workouts`);
+  return parts.join(' · ') || 'Workout';
+}
+
 // Calendar grid, one column per week with Monday on top. Darker = more sets that day.
 function heatmap(weeksCount = 16) {
   const { days } = analyse();
@@ -151,7 +160,7 @@ function heatmap(weeksCount = 16) {
       const date = addDays(monday, d);
       const day = days.get(date);
       const cls = date > today ? 'future' : `l${day ? clamp(Math.ceil(day.sets / max * 4), 1, 4) : 0}`;
-      const tip = `${day ? plural(day.sets, 'set') + (day.workouts > 1 ? ` in ${day.workouts} workouts` : '') : 'Rest day'}|${fmtDate(date, 'weekday')}`;
+      const tip = `${day ? dayLabel(day) : 'Rest day'}|${fmtDate(date, 'weekday')}`;
       // Days with a workout open that day in History
       const link = day ? ` data-action="hist-open" data-date="${date}"` : '';
       cells += `<i class="${cls}${date === today ? ' today' : ''}${day ? ' has' : ''}"${link} data-tip="${esc(tip)}" style="animation-delay:${col * 25}ms"></i>`;
@@ -188,6 +197,24 @@ function weeklyBars(n = 8) {
   return { html: `<div class="bars">${html}</div>`, useVolume };
 }
 
+// Minutes of cardio per week. Plain bars: this shows how much, not good or bad.
+function cardioBars(n = 8) {
+  const { weeks } = analyse();
+  const mondays = weeksBack(n);
+  const minutes = mo => weeks.has(mo) ? Math.round(weeks.get(mo).cardio / 60) : 0;
+  const max = Math.max(1, ...mondays.map(minutes));
+  return `<div class="bars short">${mondays.map((mo, i) => {
+    const m = minutes(mo);
+    const km = weeks.has(mo) ? weeks.get(mo).distance : 0;
+    const tip = `${m} min${km ? ` · ${num(km)} ${distUnit()}` : ''}|Week of ${fmtDate(mo, 'short')}`;
+    return `<div class="bar-col" data-tip="${esc(tip)}">
+      <span class="bar-val">${m || ''}</span>
+      <div class="bar-track"><div class="bar plain" style="height:${(m / max * 100).toFixed(1)}%;animation-delay:${i * 45}ms"></div></div>
+      <span class="bar-label">${fmtDate(mo, 'short')}</span>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 // Sets per muscle group: last 7 days as a bar, the 7 days before as a tick mark
 function muscleBars(cur, prev) {
   const names = MUSCLES.concat(cur.Other || prev.Other ? ['Other'] : []);
@@ -221,7 +248,7 @@ function monthCalendar(ym, selected) {
     const day = days.get(date);
     const cls = `cal-day${date === today ? ' today' : ''}`;
     cells += day
-      ? `<button class="${cls} has${date === selected ? ' sel' : ''}" data-action="hist-day" data-date="${date}" data-tip="${plural(day.sets, 'set')}|${fmtDate(date, 'weekday')}">${d}</button>`
+      ? `<button class="${cls} has${date === selected ? ' sel' : ''}" data-action="hist-day" data-date="${date}" data-tip="${dayLabel(day)}|${fmtDate(date, 'weekday')}">${d}</button>`
       : `<span class="${cls}">${d}</span>`;
   }
   return `<div class="cal">${cells}</div>`;

@@ -9,7 +9,7 @@ function welcomeView() {
       <ol class="steps">
         <li><strong>Log a workout</strong><span class="muted small">Reps, sets and weight for each exercise, with last time's numbers beside you</span></li>
         <li><strong>Weigh in weekly</strong><span class="muted small">Track bodyweight against a goal and a target</span></li>
-        <li><strong>Watch the colours</strong><span class="muted small"><span class="delta up">▲ Green</span> is progress, <span class="delta down">▼ red</span> is a stall or decline</span></li>
+        <li><strong>Watch the colours</strong><span class="muted small"><span class="delta up">▲ Green</span> is progress, <span class="delta down">▼ red</span> is a decline, <span class="delta flat">■ grey</span> is no change</span></li>
       </ol>
       <div class="row gap-s center wrap">
         <button class="btn primary lg" data-action="start-empty">${icon('plus', 18)} Start your first workout</button>
@@ -51,7 +51,7 @@ function upNextCard() {
 }
 
 function insightsCard() {
-  const mark = { good: '▲', bad: '▼', info: '●' };
+  const mark = { good: '▲', bad: '▼', flat: '■', info: '●' };
   const items = insights().map(i =>
     `<li class="insight ${i.tone}${i.key ? ' clickable' : ''}" ${i.key ? `data-action="open-ex" data-key="${esc(i.key)}"` : ''}>
       <span class="insight-mark">${mark[i.tone]}</span><span>${i.html}</span>
@@ -78,6 +78,43 @@ function exerciseTable(exercises, limit) {
     <thead><tr><th>Exercise</th><th class="hide-s">Trend</th><th>Last best set</th><th class="num hide-s">Est. 1RM</th><th class="num">vs last</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+
+// " · 15 sets · 4,274 kg · 20 min cardio", leaving out whatever a workout didn't have
+function workoutSize(t, exact) {
+  return (t.sets ? ` · ${plural(t.sets, 'set')}` : '')
+    + (t.volume ? ` · ${exact ? big(t.volume) : compact(t.volume)} ${unit()}` : '')
+    + (t.cardio ? ` · ${Math.round(t.cardio / 60)} min cardio` : '');
+}
+
+// Cardio is logged inside workouts (pick anything under Cardio when adding an
+// exercise); this card pulls it together.
+function cardioCard(cur7, prev7) {
+  const a = analyse();
+  const du = distUnit();
+  const sessions = [...a.exercises.values()].flatMap(e => e.sessions.filter(s => s.kind === 'cardio'))
+    .sort((x, y) => y.date.localeCompare(x.date));
+  const head = `<div class="card-head"><h3>Cardio</h3><span class="muted small">Minutes a week</span></div>`;
+  if (!sessions.length) {
+    return `<section class="card c-5">${head}
+      <p class="muted small">No cardio logged yet. When you add an exercise to a workout, pick one under <strong>Cardio</strong> (treadmill, bike, rowing machine and more) and enter the time. Distance is optional.</p>
+      <button class="btn" data-action="nav" data-view="workout">${icon('plus', 16)} Start a workout</button>
+    </section>`;
+  }
+  const minutes = Math.round(cur7.cardio / 60);
+  const before = Math.round(prev7.cardio / 60);
+  const recent = sessions.slice(0, 3).map(s => `<li class="clickable" data-action="open-ex" data-key="${esc(s.key)}">
+      <span class="stack"><strong>${esc(s.name)}</strong><span class="muted small">${fmtSets(s.sets)} · ${relDay(s.date)}</span></span>
+      ${badge(s.status, s.pr)}
+    </li>`).join('');
+  return `<section class="card c-5">${head}
+    <div class="row between wrap">
+      <div><span class="big-num">${count(minutes)}</span> <span class="muted">min in the last 7 days</span></div>
+      <span class="muted small">${cur7.distance ? `${num(cur7.distance)} ${du} · ` : ''}${before} min the week before</span>
+    </div>
+    ${cardioBars(8)}
+    <ul class="list">${recent}</ul>
+  </section>`;
 }
 
 function dashboardBodyCard(body) {
@@ -141,7 +178,12 @@ Views.dashboard = {
     const loadPrev = useVolume ? prev7.volume : prev7.sets;
     const loadPct = loadPrev ? (loadNow - loadPrev) / loadPrev * 100 : null;
     const l = body.latest;
-    const stalled = tracked.length - improving;
+    const declined = tracked.filter(e => lastOf(e.sessions).status === 'down').length;
+    const stalled = tracked.length - improving - declined;
+    const notImproving = [
+      declined ? `<span class="delta down">▼ ${declined} down</span>` : '',
+      stalled ? `<span class="delta flat">■ ${stalled} stalled</span>` : '',
+    ].filter(Boolean).join(' · ');
     const tiles = [
       tile('This week', `${count(week.workouts)}<small> / ${s.weeklyGoal}</small>`,
         left <= 0 ? '<span class="delta up">✓ Goal hit</span>' : `${plural(left, 'workout')} to go`,
@@ -153,7 +195,7 @@ Views.dashboard = {
       tile('Bodyweight', l ? `${count(l.weight)}<small> ${u}</small>` : '–',
         !l ? 'No weigh-ins yet' : l.status === 'new' ? fmtDate(l.date, 'short') : `${delta(l.delta, l.status, ` ${u}`)} since ${fmtDate(body.list[body.list.length - 2].date, 'short')}`),
       tile('Exercises improving', `${count(improving)}<small> / ${tracked.length}</small>`,
-        !tracked.length ? 'Needs two sessions' : stalled ? `<span class="delta down">▼ ${stalled} not improving</span>` : '<span class="delta up">▲ All moving up</span>'),
+        !tracked.length ? 'Needs two sessions' : notImproving || '<span class="delta up">▲ All moving up</span>'),
       tile('PRs, last 30 days', count(recentPrs),
         prs.length ? `Latest: ${esc(lastOf(prs).name)}` : 'None yet'),
     ].map(t => `<div class="c-2">${t}</div>`).join('');
@@ -163,16 +205,14 @@ Views.dashboard = {
       const t = a.byWorkout.get(w.id);
       return `<li class="clickable" data-action="hist-open" data-date="${w.date}">
         <span class="stack"><strong>${esc(w.name)}</strong>
-          <span class="muted small">${relDay(w.date)}${w.duration ? ` · ${fmtDuration(w.duration)}` : ''} · ${plural(t.sets, 'set')}${t.volume ? ` · ${compact(t.volume)} ${u}` : ''}</span></span>
-        <span class="tally">${t.prs ? `<span class="badge up pr">★ ${t.prs}</span>` : ''}
-          <span class="delta up">▲ ${t.up}</span><span class="delta down">▼ ${t.compared - t.up}</span></span>
+          <span class="muted small">${relDay(w.date)}${w.duration >= 60 ? ` · ${fmtDuration(w.duration)}` : ''}${workoutSize(t)}</span></span>
+        <span class="tally">${t.prs ? `<span class="badge up pr">★ ${t.prs}</span>` : ''}${tallyHtml(t)}</span>
       </li>`;
     }).join('');
 
     const feed = prs.slice(-6).reverse().map(p => {
-      const type = p.prs.includes('best') ? 'best' : 'weight';
       return `<li class="clickable" data-action="open-ex" data-key="${esc(p.key)}">
-        <span class="stack"><strong>${esc(p.name)}</strong><span class="muted small">${PR_LABEL[type](p)} · ${fmtSet(p.bestSet)}</span></span>
+        <span class="stack"><strong>${esc(p.name)}</strong><span class="muted small">${PR_LABEL[mainPr(p)](p)}${p.timed ? '' : ` · ${fmtSet(p.bestSet)}`}</span></span>
         <span class="muted small nowrap">${fmtDate(p.date, 'short')}</span>
       </li>`;
     }).join('');
@@ -231,7 +271,8 @@ Views.dashboard = {
         ${feed ? `<ul class="list">${feed}</ul>` : '<p class="muted small">Beat a previous best and it shows up here.</p>'}
       </section>
 
-      <section class="card c-12">
+      ${cardioCard(cur7, prev7)}
+      <section class="card c-7">
         <div class="card-head"><h3>Achievements</h3><span class="muted small">${unlocked} of ${badges.length} unlocked</span></div>
         <div class="ach-grid">${shelf}</div>
       </section>

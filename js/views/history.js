@@ -27,7 +27,7 @@ function workoutCard(w, a) {
   return `<section class="card workout-card">
     <div class="card-head">
       <div><h3>${esc(w.name)}</h3>
-        <span class="muted small">${fmtDate(w.date, 'weekday')}${w.duration ? ` · ${fmtDuration(w.duration)}` : ''} · ${plural(t.sets, 'set')}${t.volume ? ` · ${big(t.volume)} ${unit()}` : ''}</span></div>
+        <span class="muted small">${fmtDate(w.date, 'weekday')}${w.duration >= 60 ? ` · ${fmtDuration(w.duration)}` : ''}${workoutSize(t, true)}</span></div>
       <div class="row gap-xs">
         <button class="icon-btn" data-action="repeat-workout" data-id="${w.id}" data-tip="Do this workout again" aria-label="Repeat workout">${icon('repeat', 16)}</button>
         <button class="icon-btn" data-action="save-as-routine" data-id="${w.id}" data-tip="Save as a routine" aria-label="Save as routine">${icon('bookmark', 16)}</button>
@@ -37,8 +37,7 @@ function workoutCard(w, a) {
     </div>
     <div class="tally">
       ${t.prs ? `<span class="badge up pr">★ ${plural(t.prs, 'PR')}</span>` : ''}
-      <span class="delta up">▲ ${t.up} improved</span>
-      <span class="delta down">▼ ${t.compared - t.up} not improved</span>
+      ${tallyHtml(t, true)}
     </div>
     ${w.notes ? `<p class="note">${esc(w.notes)}</p>` : ''}
     <ul class="list status-list">${rows}</ul>
@@ -94,6 +93,7 @@ Views.history = {
             <div><strong>${count(m.workouts)}</strong><span>Workouts</span></div>
             <div><strong>${m.duration ? fmtDuration(m.duration) : '–'}</strong><span>Time</span></div>
             <div><strong>${compact(m.volume)}</strong><span>${unit()} lifted</span></div>
+            ${m.cardio ? `<div><strong>${count(Math.round(m.cardio / 60))}</strong><span>min cardio</span></div>` : ''}
             <div><strong>${count(prs)}</strong><span>PRs</span></div>
           </div>
         </section>

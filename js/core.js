@@ -26,7 +26,7 @@ const ui = {
   exercise: { key: null, metric: 'best', range: 'all', q: '' },
   history: { month: null, day: null, q: '', scope: 'month' },
   body: { range: 'all' },
-  picker: { q: '', muscle: 'All' },
+  picker: { q: '', muscle: 'All', equipment: 'Any' },
   tools: { plateTarget: '', rmWeight: '', rmReps: '' },
 };
 
@@ -50,13 +50,18 @@ function renderTopbar() {
   const view = Views[ui.view];
   const live = state.active && state.active.mode === 'workout';
   const cta = ui.view === 'workout' ? ''
-    : live ? `<button class="btn primary" data-action="nav" data-view="workout">${icon('play', 16)} Resume workout <span data-elapsed></span></button>`
+    : live ? `<button class="btn primary" data-action="nav" data-view="workout">${icon('play', 16)} Resume <span class="hide-s">workout</span> <span data-elapsed></span></button>`
       : `<button class="btn primary" data-action="nav" data-view="workout">${icon('plus', 16)} Start workout</button>`;
+  const dark = state.settings.theme === 'dark';
+  const themeLabel = dark ? 'Switch to light mode' : 'Switch to dark mode';
   $('#topbar').innerHTML = `<div>
       <h1>${view.title}</h1>
       <p class="muted small">${fmtDate(isoDate(), 'weekday')}${state.demo ? ' · sample data' : ''}</p>
     </div>
-    <div class="row gap-s">${cta}</div>`;
+    <div class="row gap-s">
+      <button class="icon-btn theme-btn" data-action="toggle-theme" aria-label="${themeLabel}" data-tip="${themeLabel}">${icon(dark ? 'sun' : 'moon', 20)}</button>
+      ${cta}
+    </div>`;
 }
 
 // Entrance animations only play when `animate` is set, so small edits

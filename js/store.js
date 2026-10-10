@@ -69,11 +69,23 @@ function cleanImport(data) {
   const n = v => Math.max(0, Number(v) || 0);
   const optional = v => Number(v) > 0 ? Number(v) : '';
   const pick = (v, allowed, fallback) => allowed.includes(v) ? v : fallback;
+  const kindOf = ex => ex.kind === 'cardio' || ex.kind === 'hold' ? ex.kind : null;
   const sets = v => list(v).map(s => ({ reps: Math.floor(n(s.reps)), weight: n(s.weight), type: SET_TYPES[s.type] ? s.type : 'normal' }));
-  const logged = v => list(v).map(ex => ({ name: text(ex.name, 80).trim(), notes: text(ex.notes, 500), sets: sets(ex.sets).filter(s => s.reps > 0) }))
-    .filter(ex => ex.name && ex.sets.length);
-  const planned = v => list(v).map(ex => ({ name: text(ex.name, 80).trim(), sets: sets(ex.sets).map(s => ({ ...s, reps: s.reps || '', weight: s.weight || '' })) }))
-    .filter(ex => ex.name && ex.sets.length);
+  const timedSets = v => list(v).map(s => ({ seconds: Math.round(n(s.seconds)), distance: n(s.distance), type: 'normal' }));
+  const logged = v => list(v).map(ex => {
+    const kind = kindOf(ex);
+    const out = { name: text(ex.name, 80).trim(), notes: text(ex.notes, 500) };
+    if (kind) Object.assign(out, { kind, sets: timedSets(ex.sets).filter(s => s.seconds > 0) });
+    else out.sets = sets(ex.sets).filter(s => s.reps > 0);
+    return out;
+  }).filter(ex => ex.name && ex.sets.length);
+  const planned = v => list(v).map(ex => {
+    const kind = kindOf(ex);
+    const out = { name: text(ex.name, 80).trim() };
+    if (kind) Object.assign(out, { kind, sets: timedSets(ex.sets).map(s => ({ ...s, seconds: s.seconds || '', distance: s.distance || '' })) });
+    else out.sets = sets(ex.sets).map(s => ({ ...s, reps: s.reps || '', weight: s.weight || '' }));
+    return out;
+  }).filter(ex => ex.name && ex.sets.length);
   const s = { ...defaultSettings(), ...(data.settings || {}) };
   const ids = new Set();
   const uniqueId = v => {
@@ -105,7 +117,7 @@ function cleanImport(data) {
     routines: list(data.routines).map(r => ({ id: uniqueId(r.id), name: text(r.name, 80).trim() || 'Routine', exercises: planned(r.exercises) }))
       .filter(r => r.exercises.length),
     customExercises: list(data.customExercises).filter(e => text(e.name, 80).trim())
-      .map(e => ({ name: text(e.name, 80).trim(), muscle: MUSCLES.includes(e.muscle) ? e.muscle : 'Other', equipment: '' })),
+      .map(e => ({ name: text(e.name, 80).trim(), muscle: CATEGORIES.includes(e.muscle) ? e.muscle : 'Other', equipment: '' })),
   });
 }
 
@@ -132,18 +144,22 @@ let _exIndex = null;
 function exerciseIndex() {
   if (!_exIndex) {
     _exIndex = new Map(EXERCISE_LIBRARY.map(e => [norm(e.name), e]));
-    for (const e of state.customExercises) _exIndex.set(norm(e.name), { ...e, custom: true });
+    for (const e of state.customExercises) {
+      _exIndex.set(norm(e.name), { ...e, kind: e.muscle === 'Cardio' ? 'cardio' : null, custom: true });
+    }
   }
   return _exIndex;
 }
 
 function exerciseInfo(name) {
-  return exerciseIndex().get(norm(name)) || { name, muscle: 'Other', equipment: '' };
+  return exerciseIndex().get(norm(name)) || { name, muscle: 'Other', equipment: '', kind: null };
 }
 
 // ---------- units ----------
 
+const KM_PER_MILE = 1.609344;
 const unit = () => state.settings.unit;
+const distUnit = () => unit() === 'kg' ? 'km' : 'mi';
 const lengthUnit = () => unit() === 'kg' ? 'cm' : 'in';
 const measureUnit = type => type === 'Body fat' ? '%' : lengthUnit();
 const plateSizes = () => unit() === 'kg' ? [25, 20, 15, 10, 5, 2.5, 1.25] : [45, 35, 25, 10, 5, 2.5];
@@ -156,7 +172,15 @@ function convertUnits(to) {
   const body = v => blank(v) ? v : Math.round(Number(v) * f * 10) / 10;
   // Centimetres snap to the nearest half so a round trip lands back where it started
   const length = v => to === 'lb' ? Math.round(Number(v) / 2.54 * 10) / 10 : Math.round(Number(v) * 2.54 * 2) / 2;
+  // Kilometres snap to the nearest 0.05 so a round trip lands back where it started
+  const distance = v => blank(v) || !(Number(v) > 0) ? v
+    : to === 'lb' ? Math.round(Number(v) / KM_PER_MILE * 100) / 100 : Math.round(Number(v) * KM_PER_MILE * 20) / 20;
   const convertSets = exercises => exercises.forEach(ex => ex.sets.forEach(s => {
+    if (ex.kind) {
+      s.distance = distance(s.distance);
+      if (s.target) s.target.distance = distance(s.target.distance);
+      return;
+    }
     s.weight = lift(s.weight);
     if (s.target) s.target.weight = lift(s.target.weight);
   }));
@@ -199,6 +223,14 @@ function demoData() {
     for (const [name, offset, exercises] of plan) {
       const date = addDays(monday, offset);
       if (date > today || skipped.has(`${wi}:${name}`)) continue;
+      // A run after pulling and a plank after legs, to show timed exercises
+      const extra = name === 'Pull' ? [{
+        name: 'Treadmill run', notes: '', kind: 'cardio',
+        sets: [{ seconds: 1200 + (wi % 3 === 2 ? -60 : wi * 20), distance: Math.round((3 + wi * 0.12 - (wi === 5 ? 0.3 : 0)) * 10) / 10, type: 'normal' }],
+      }] : name === 'Legs' ? [{
+        name: 'Plank', notes: '', kind: 'hold',
+        sets: [45 + wi * 5 - (wi === 4 ? 10 : 0), 40 + wi * 5].map(seconds => ({ seconds, distance: 0, type: 'normal' })),
+      }] : [];
       workouts.push({
         id: workouts.length + 1,
         date,
@@ -226,7 +258,7 @@ function demoData() {
             if (st.r > hi) { st.w += step; st.r = lo; }
           }
           return { name: exName, notes: '', sets };
-        }),
+        }).concat(extra),
       });
     }
   });

@@ -53,10 +53,15 @@ function delta(value, status, suffix = '', digits = 1) {
   return `<span class="delta ${status}">${arrow} ${signed(value, digits)}${suffix}</span>`;
 }
 
-const fmtSet = s => s.weight > 0 ? `${s.reps} × ${num(s.weight, 2)} ${unit()}` : `${s.reps} reps`;
-const fmtSetShort = s => s.weight > 0 ? `${num(s.weight, 2)} × ${s.reps}` : `${s.reps} reps`;
+// A timed set (cardio or a hold) carries seconds instead of reps and weight
+const isTimedSet = s => s.seconds != null;
+const fmtTimedSet = s => fmtTime(s.seconds) + (s.distance > 0 ? ` · ${num(s.distance, 2)} ${distUnit()}` : '');
+
+const fmtSet = s => isTimedSet(s) ? fmtTimedSet(s) : s.weight > 0 ? `${s.reps} × ${num(s.weight, 2)} ${unit()}` : `${s.reps} reps`;
+const fmtSetShort = s => isTimedSet(s) ? fmtTimedSet(s) : s.weight > 0 ? `${num(s.weight, 2)} × ${s.reps}` : `${s.reps} reps`;
 
 function fmtSets(sets) {
+  if (sets.length && isTimedSet(sets[0])) return sets.map(fmtTimedSet).join(', ');
   const tag = s => s.type === 'warmup' ? 'W ' : '';
   return sets.map(s => tag(s) + (s.weight > 0 ? `${s.reps}×${num(s.weight, 2)}` : `${s.reps}`)).join(', ')
     + (sets.some(s => s.weight > 0) ? ` ${unit()}` : ' reps');

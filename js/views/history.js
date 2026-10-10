@@ -1,0 +1,160 @@
+'use strict';
+
+const HISTORY_PAGE = 30;
+
+function historyMonth() {
+  if (!ui.history.month) {
+    ui.history.month = (state.workouts.length ? lastOf(sortedWorkouts()).date : isoDate()).slice(0, 7);
+  }
+  return ui.history.month;
+}
+
+function shiftMonth(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  return isoDate(new Date(y, m - 1 + n, 1)).slice(0, 7);
+}
+
+function workoutCard(w, a) {
+  const t = a.byWorkout.get(w.id);
+  const rows = w.exercises.map((ex, i) => {
+    const s = a.bySession.get(`${w.id}:${i}`);
+    return `<li class="${s.status}">
+      <span class="stack"><strong>${esc(ex.name)}</strong>
+        <span class="muted small">${fmtSets(ex.sets)}${ex.notes ? ` · “${esc(ex.notes)}”` : ''}</span></span>
+      ${badge(s.status, s.pr)}
+    </li>`;
+  }).join('');
+  return `<section class="card workout-card">
+    <div class="card-head">
+      <div><h3>${esc(w.name)}</h3>
+        <span class="muted small">${fmtDate(w.date, 'weekday')}${w.duration ? ` · ${fmtDuration(w.duration)}` : ''} · ${plural(t.sets, 'set')}${t.volume ? ` · ${big(t.volume)} ${unit()}` : ''}</span></div>
+      <div class="row gap-xs">
+        <button class="icon-btn" data-action="repeat-workout" data-id="${w.id}" data-tip="Do this workout again" aria-label="Repeat workout">${icon('repeat', 16)}</button>
+        <button class="icon-btn" data-action="save-as-routine" data-id="${w.id}" data-tip="Save as a routine" aria-label="Save as routine">${icon('bookmark', 16)}</button>
+        <button class="icon-btn" data-action="edit-workout" data-id="${w.id}" data-tip="Edit" aria-label="Edit workout">${icon('edit', 16)}</button>
+        <button class="icon-btn danger" data-action="del-workout" data-id="${w.id}" data-tip="Delete" aria-label="Delete workout">${icon('trash', 16)}</button>
+      </div>
+    </div>
+    <div class="tally">
+      ${t.prs ? `<span class="badge up pr">★ ${plural(t.prs, 'PR')}</span>` : ''}
+      <span class="delta up">▲ ${t.up} improved</span>
+      <span class="delta down">▼ ${t.compared - t.up} not improved</span>
+    </div>
+    ${w.notes ? `<p class="note">${esc(w.notes)}</p>` : ''}
+    <ul class="list status-list">${rows}</ul>
+  </section>`;
+}
+
+// The filtered list, re-rendered on its own while typing in the search box
+function historyListHtml() {
+  const a = analyse();
+  const h = ui.history;
+  const ym = historyMonth();
+  const q = norm(h.q);
+  let list = sortedWorkouts().reverse();
+  let title;
+  if (q) {
+    list = list.filter(w => norm(w.name).includes(q) || norm(w.notes || '').includes(q) || w.exercises.some(ex => norm(ex.name).includes(q)));
+    title = `${plural(list.length, 'workout')} matching “${esc(h.q.trim())}”`;
+  } else if (h.day) {
+    list = list.filter(w => w.date === h.day);
+    title = `${fmtDate(h.day, 'weekday')} <button class="link" data-action="hist-clear">Show the whole month</button>`;
+  } else if (h.scope === 'month') {
+    list = list.filter(w => w.date.startsWith(ym));
+    title = `${plural(list.length, 'workout')} in ${fmtDate(`${ym}-01`, 'month')}`;
+  } else {
+    title = `${plural(list.length, 'workout')} in total`;
+  }
+  const shown = list.slice(0, h.limit || HISTORY_PAGE);
+  return `<p class="list-title">${title}</p>
+    ${shown.length ? `<div class="cards wide-cards">${shown.map(w => workoutCard(w, a)).join('')}</div>` : emptyState('🗓️', 'No workouts here.')}
+    ${list.length > shown.length ? `<button class="btn wide" data-action="hist-more">Show ${Math.min(HISTORY_PAGE, list.length - shown.length)} more</button>` : ''}`;
+}
+
+Views.history = {
+  title: 'History',
+  render() {
+    if (!state.workouts.length) {
+      return emptyState('📒', 'No workouts logged yet.', `<button class="btn primary" data-action="nav" data-view="workout">${icon('plus', 16)} Start a workout</button>`);
+    }
+    const h = ui.history;
+    const ym = historyMonth();
+    const m = windowTotals(`${ym}-01`, `${ym}-31`);
+    const prs = analyse().prFeed.filter(p => p.pr && p.date.startsWith(ym)).length;
+    return `<div class="grid">
+      <aside class="c-4 col side">
+        <section class="card">
+          <div class="card-head">
+            <button class="icon-btn" data-action="hist-month" data-dir="-1" aria-label="Previous month">${icon('left', 18)}</button>
+            <h3>${fmtDate(`${ym}-01`, 'month')}</h3>
+            <button class="icon-btn" data-action="hist-month" data-dir="1" aria-label="Next month" ${ym >= isoDate().slice(0, 7) ? 'disabled' : ''}>${icon('right', 18)}</button>
+          </div>
+          ${monthCalendar(ym, h.day)}
+          <div class="mini-stats">
+            <div><strong>${count(m.workouts)}</strong><span>Workouts</span></div>
+            <div><strong>${m.duration ? fmtDuration(m.duration) : '–'}</strong><span>Time</span></div>
+            <div><strong>${compact(m.volume)}</strong><span>${unit()} lifted</span></div>
+            <div><strong>${count(prs)}</strong><span>PRs</span></div>
+          </div>
+        </section>
+      </aside>
+      <div class="c-8 col">
+        <div class="toolbar">
+          <div class="search grow">${icon('search', 16)}<input type="search" placeholder="Search workouts, exercises or notes" data-input="hist-q" value="${esc(h.q)}" aria-label="Search history"></div>
+          ${segmented('hist-scope', [['month', 'This month'], ['all', 'All time']], h.scope)}
+        </div>
+        <div id="hist-list">${historyListHtml()}</div>
+      </div>
+    </div>`;
+  },
+};
+
+Inputs['hist-q'] = el => {
+  ui.history.q = el.value;
+  $('#hist-list').innerHTML = historyListHtml();
+};
+
+Actions['hist-month'] = el => {
+  ui.history.month = shiftMonth(historyMonth(), Number(el.dataset.dir));
+  ui.history.day = null;
+  ui.history.scope = 'month';
+  ui.history.limit = HISTORY_PAGE;
+  render();
+};
+
+Actions['hist-day'] = el => {
+  ui.history.day = ui.history.day === el.dataset.date ? null : el.dataset.date;
+  render();
+};
+
+Actions['hist-clear'] = () => {
+  ui.history.day = null;
+  render();
+};
+
+Actions['hist-scope'] = el => {
+  ui.history.scope = el.dataset.value;
+  ui.history.day = null;
+  ui.history.limit = HISTORY_PAGE;
+  render();
+};
+
+Actions['hist-more'] = () => {
+  ui.history.limit = (ui.history.limit || HISTORY_PAGE) + HISTORY_PAGE;
+  $('#hist-list').innerHTML = historyListHtml();
+};
+
+// From the dashboard: jump to one day's workout
+Actions['hist-open'] = el => {
+  ui.history = { ...ui.history, month: el.dataset.date.slice(0, 7), day: el.dataset.date, q: '', scope: 'month' };
+  go('history');
+};
+
+Actions['del-workout'] = el => {
+  const w = workoutById(el);
+  if (!confirm(`Delete “${w.name}” from ${fmtDate(w.date, 'weekday')}? This can't be undone.`)) return;
+  state.workouts = state.workouts.filter(x => x !== w);
+  save();
+  render();
+  toast('Workout deleted');
+};

@@ -18,6 +18,7 @@ function defaultSettings() {
     autoRest: true,
     setupDone: false,    // has the first-run setup been finished or skipped
     installDismissed: false, // "Not now" on the install banner
+    installed: false,    // the browser reported the app as installed on this device
   };
 }
 

@@ -797,6 +797,7 @@ button.cal-day:hover { background: var(--hover); }
 .install-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-left: 22px; }
 .install-steps li { padding-left: 4px; }
 .install-steps .icon { vertical-align: -3px; color: var(--accent-strong); }
+.summary .note { text-align: left; }
 
 /* ---------- overlays ---------- */
 

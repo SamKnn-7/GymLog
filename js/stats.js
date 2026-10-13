@@ -220,11 +220,13 @@ function analyse() {
         return;
       }
       const count = session.work.length;
-      const muscle = entry.info.muscle;
       total.sets += count;
       total.volume += session.volume;
-      total.muscles[muscle] = (total.muscles[muscle] || 0) + count;
-      week.muscles[muscle] = (week.muscles[muscle] || 0) + count;
+      // An exercise that works several muscle groups counts its sets towards each of them
+      for (const muscle of entry.info.muscles) {
+        total.muscles[muscle] = (total.muscles[muscle] || 0) + count;
+        week.muscles[muscle] = (week.muscles[muscle] || 0) + count;
+      }
       week.sets += count;
       week.volume += session.volume;
       day.sets += count;
@@ -267,6 +269,36 @@ function windowTotals(from, to) {
     out.distance += t.distance;
     out.duration += w.duration || 0;
     for (const [m, n] of Object.entries(t.muscles)) out.muscles[m] = (out.muscles[m] || 0) + n;
+  }
+  return out;
+}
+
+// How each muscle group is doing, for the muscle map. Takes the latest session
+// of every exercise that works the group and was done in the last `days` days:
+//   'up'    more of them improved than declined
+//   'down'  more declined than improved
+//   'flat'  level, or nothing changed
+//   'new'   trained, but only first entries so far, so nothing to compare
+//   'none'  not trained in that time
+function muscleStatus(days = 28) {
+  const from = addDays(isoDate(), -days);
+  const out = {};
+  for (const m of MUSCLES) out[m] = { muscle: m, up: 0, flat: 0, down: 0, fresh: 0, exercises: [], last: '' };
+  for (const e of analyse().exercises.values()) {
+    const s = lastOf(e.sessions);
+    if (s.kind === 'cardio') continue;
+    for (const m of e.info.muscles) {
+      const g = out[m];
+      if (!g) continue;
+      if (s.date > g.last) g.last = s.date;
+      if (s.date < from) continue;
+      g.exercises.push(e);
+      g[s.status === 'new' ? 'fresh' : s.status]++;
+    }
+  }
+  for (const g of Object.values(out)) {
+    g.status = !g.exercises.length ? 'none'
+      : g.up > g.down ? 'up' : g.down > g.up ? 'down' : g.up + g.down + g.flat ? 'flat' : 'new';
   }
   return out;
 }
@@ -458,9 +490,10 @@ function insights() {
 
   const lastTrained = {};
   for (const e of a.exercises.values()) {
-    const m = e.info.muscle;
     const d = e.sessions[e.sessions.length - 1].date;
-    if (m !== 'Other' && (!lastTrained[m] || d > lastTrained[m])) lastTrained[m] = d;
+    for (const m of e.info.muscles) {
+      if (m !== 'Other' && (!lastTrained[m] || d > lastTrained[m])) lastTrained[m] = d;
+    }
   }
   const stale = Object.entries(lastTrained).map(([m, d]) => [m, daysBetween(d, today)])
     .filter(([, n]) => n >= 10 && n <= 60).sort((x, y) => y[1] - x[1])[0];

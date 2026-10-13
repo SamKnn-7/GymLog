@@ -7,13 +7,13 @@ const EX_RANGE_DAYS = { '1m': 30, '3m': 91, '6m': 182, '1y': 365 };
 function exerciseListHtml() {
   const q = norm(ui.exercise.q);
   const list = [...analyse().exercises.values()]
-    .filter(e => !q || e.key.includes(q) || norm(e.info.muscle).includes(q))
+    .filter(e => !q || e.key.includes(q) || norm(musclesLabel(e.info)).includes(q))
     .sort((x, y) => lastOf(y.sessions).date.localeCompare(lastOf(x.sessions).date));
   if (!list.length) return '<p class="muted small pad">No exercises match.</p>';
   return list.map(e => {
     const s = lastOf(e.sessions);
     return `<button class="ex-row ${s.status}${e.key === ui.exercise.key ? ' on' : ''}" data-action="ex-select" data-key="${esc(e.key)}">
-      <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${e.info.muscle} · ${relDay(s.date)}</span></span>
+      <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${esc(musclesLabel(e.info))} · ${relDay(s.date)}</span></span>
       ${sparkline(e.sessions.slice(-12).map(x => x.best), s.status, 64, 24)}
       <span class="delta ${s.status}">${s.pr ? '★' : { up: '▲', down: '▼', flat: '■', new: '●' }[s.status]}</span>
     </button>`;
@@ -25,6 +25,23 @@ const CHART_LEGEND = `<p class="legend">
     <span class="key shape down">▼</span>Worse
     <span class="key shape flat">■</span>No change
   </p>`;
+
+// The top of a progress page: which muscles the exercise works, its name, and
+// an edit button if it is one you added yourself
+function exerciseHead(entry, sessions, latest) {
+  const info = entry.info;
+  const worked = info.muscles.filter(m => MUSCLES.includes(m));
+  return `<div class="card-head wrap">
+      <div class="row gap-s">
+        ${worked.length ? bodyHighlight(worked) : ''}
+        <div><h2>${esc(entry.name)}</h2><span class="muted small">${esc(musclesLabel(info))}${info.equipment ? ` · ${esc(info.equipment)}` : ''} · ${plural(sessions, 'session')}</span></div>
+      </div>
+      <div class="row gap-s">
+        ${info.custom ? `<button class="icon-btn" data-action="edit-custom" data-name="${esc(entry.name)}" data-tip="Edit or delete this exercise" aria-label="Edit exercise">${icon('edit', 16)}</button>` : ''}
+        ${badge(latest.status, latest.pr)}
+      </div>
+    </div>`;
+}
 
 // Progress page for cardio and holds: time, distance and speed instead of weight
 function timedDetail(entry) {
@@ -84,10 +101,7 @@ function timedDetail(entry) {
     </tr>`).join('');
 
   return `<section class="card">
-      <div class="card-head wrap">
-        <div><h2>${esc(entry.name)}</h2><span class="muted small">${esc(entry.info.muscle)}${entry.info.equipment ? ` · ${esc(entry.info.equipment)}` : ''} · ${plural(all.length, 'session')}</span></div>
-        ${badge(latest.status, latest.pr)}
-      </div>
+      ${exerciseHead(entry, all.length, latest)}
       <div class="toolbar">
         ${segmented('ex-metric', metrics, e.metric)}
         ${segmented('ex-range', EX_RANGES, e.range)}
@@ -159,10 +173,7 @@ function exerciseDetail(entry) {
     </tr>`).join('');
 
   return `<section class="card">
-      <div class="card-head wrap">
-        <div><h2>${esc(entry.name)}</h2><span class="muted small">${entry.info.muscle}${entry.info.equipment ? ` · ${entry.info.equipment}` : ''} · ${plural(entry.sessions.length, 'session')}</span></div>
-        ${badge(latest.status, latest.pr)}
-      </div>
+      ${exerciseHead(entry, entry.sessions.length, latest)}
       <div class="toolbar">
         ${segmented('ex-metric', metrics, e.metric)}
         ${segmented('ex-range', EX_RANGES, e.range)}

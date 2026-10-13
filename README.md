@@ -11,7 +11,9 @@ It works on a phone, a tablet or a computer, needs no account, and keeps working
 **Logging a workout**
 
 - Last session's numbers sit greyed out in every set. Tick a set to accept them, or type your own and the row colours itself against last time.
-- 232 built-in exercises, including 70 Smith machine variations and 61 calisthenics moves, with filters by muscle group and equipment. Add your own at any time.
+- 240 built-in exercises, including 71 Smith machine variations and 64 calisthenics moves, with filters by muscle group and equipment.
+- Your own exercises, each working one muscle group or several (biceps and back, say). They can be edited or deleted later.
+- You choose how many sets a newly added exercise starts with.
 - Cardio is logged as a time with an optional distance. Holds such as planks are logged as a time.
 - Warm-up, drop and failure sets. Warm-ups do not count towards progress.
 - Rest timer that starts when a set is ticked off, an elapsed clock, notes, and an alert the moment you beat a personal record.
@@ -20,6 +22,7 @@ It works on a phone, a tablet or a computer, needs no account, and keeps working
 **Seeing progress**
 
 - Dashboard with weekly goal, week streak, volume, an activity calendar, sets per muscle group, cardio minutes and written insights.
+- A muscle map: the front and back of the body, with each of the eleven muscle groups coloured by whether its exercises are improving, or by how many sets it has had this week. Tap a muscle for the exercises behind it.
 - A progress page for every exercise: estimated one-rep max, top weight, volume or reps over time, personal records and a rep-max table.
 - History with a month calendar and search. Any workout can be repeated, edited or saved as a routine.
 - Rest days, marked for today or any past day, with an optional note.
@@ -80,6 +83,7 @@ js/library.js           built-in exercises and routine templates
 js/store.js             saved state, backups, unit conversion, sample data
 js/stats.js             progress, records, streaks, insights, achievements
 js/charts.js            line charts, bars, activity calendar
+js/bodymap.js           the body figure and the muscle map
 js/ui.js                icons, badges, toasts, dialogs, tooltips
 js/timer.js             rest timer
 js/core.js              page registry and rendering
@@ -95,6 +99,7 @@ How progress is judged:
 - **Cardio:** further is better; over the same distance, faster is better; with no distance logged, longer is better.
 - **Holds:** the longest single hold, then total time.
 - **Bodyweight:** a change counts as progress when it moves toward the chosen goal.
+- **Muscle map:** takes the latest session of every exercise for a muscle group from the last four weeks. The group is green when more of them improved than declined, red the other way round, and grey when level.
 
 ## Updating the live site
 

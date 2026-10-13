@@ -208,7 +208,7 @@ function exerciseCardHtml(a, ex, ei) {
       : `<th>${unit()}</th><th>Reps</th>`;
   return `<section class="card ex-card" data-ei="${ei}">
     <div class="card-head">
-      <div><h3>${esc(ex.name)}</h3><span class="muted small">${esc(info.muscle)}${info.equipment ? ` · ${esc(info.equipment)}` : ''}</span></div>
+      <div><h3>${esc(ex.name)}</h3><span class="muted small">${esc(musclesLabel(info))}${info.equipment ? ` · ${esc(info.equipment)}` : ''}</span></div>
       <div class="row gap-xs">
         ${entry ? `<button class="icon-btn" data-action="ex-history" data-tip="Past sessions">${icon('chart', 16)}</button>` : ''}
         <button class="icon-btn" data-action="move-ex" data-dir="-1" ${ei === 0 ? 'disabled' : ''} aria-label="Move up">${icon('up', 16)}</button>
@@ -387,11 +387,30 @@ Views.workout = {
 
 // ---------- exercise picker ----------
 
-function pickerChips() {
+const filterChip = (action, value, label, on) =>
+  `<button class="chip ${on ? 'on' : ''}" data-action="${action}" data-value="${value}" aria-pressed="${on}">${label}</button>`;
+
+// Two groups of filter chips. On a phone each group folds away behind a
+// button showing the current choice, so the list keeps the screen.
+function pickerFilters() {
   const p = ui.picker;
-  const chip = (action, value, label, on) => `<button class="chip ${on ? 'on' : ''}" data-action="${action}" data-value="${value}">${label}</button>`;
-  return `<div class="chips">${['All', ...CATEGORIES].map(m => chip('picker-muscle', m, m, p.muscle === m)).join('')}</div>
-    <div class="chips">${['Any', ...EQUIPMENT].map(e => chip('picker-equipment', e, e === 'Any' ? 'Any equipment' : e, p.equipment === e)).join('')}</div>`;
+  const fold = (which, label, value, on) => `<button class="filter-tab${p.open === which ? ' open' : ''}${on ? ' set' : ''}" data-action="picker-fold" data-which="${which}" aria-expanded="${p.open === which}">
+      <span class="stack"><span class="muted small">${label}</span><strong>${value}</strong></span>${icon('down', 16)}
+    </button>`;
+  return `<div class="filter-tabs">
+      ${fold('muscle', 'Muscle group', p.muscle, p.muscle !== 'All')}
+      ${fold('equipment', 'Equipment', p.equipment, p.equipment !== 'Any')}
+    </div>
+    <div class="chips${p.open === 'muscle' ? ' open' : ''}">${['All', ...CATEGORIES].map(m => filterChip('picker-muscle', m, m, p.muscle === m)).join('')}</div>
+    <div class="chips${p.open === 'equipment' ? ' open' : ''}">${['Any', ...EQUIPMENT].map(e => filterChip('picker-equipment', e, e === 'Any' ? 'Any equipment' : e, p.equipment === e)).join('')}</div>`;
+}
+
+// How many sets a newly added exercise starts with; the same setting as under Tools
+function setsStepper() {
+  const n = state.settings.defaultSets;
+  return `<button class="icon-btn" data-action="sets-step" data-dir="-1" ${n <= 1 ? 'disabled' : ''} aria-label="Fewer sets">${icon('minus', 16)}</button>
+    <span><strong>${n}</strong> ${n === 1 ? 'set' : 'sets'}</span>
+    <button class="icon-btn" data-action="sets-step" data-dir="1" ${n >= 10 ? 'disabled' : ''} aria-label="More sets">${icon('plus', 16)}</button>`;
 }
 
 function pickerList() {
@@ -400,40 +419,42 @@ function pickerList() {
   const nq = norm(q);
   const inWorkout = new Set(state.active.exercises.map(e => norm(e.name)));
   let list = [...exerciseIndex().values()];
-  // Names that only exist in old workouts still deserve a row
-  for (const e of a.exercises.values()) if (!exerciseIndex().has(e.key)) list.push(e.info);
-  if (muscle !== 'All') list = list.filter(e => e.muscle === muscle);
+  // Names that only exist in old workouts (an exercise deleted since, say) turn up when searched for
+  if (nq) for (const e of a.exercises.values()) if (!exerciseIndex().has(e.key)) list.push(e.info);
+  if (muscle !== 'All') list = list.filter(e => e.muscles.includes(muscle));
   if (equipment !== 'Any') list = list.filter(e => e.equipment === equipment);
-  if (nq) list = list.filter(e => norm(`${e.name} ${e.muscle} ${e.equipment}`).includes(nq));
+  if (nq) list = list.filter(e => norm(`${e.name} ${e.muscles.join(' ')} ${e.equipment}`).includes(nq));
   const lastDate = e => a.exercises.has(norm(e.name)) ? lastOf(a.exercises.get(norm(e.name)).sessions).date : '';
   list.sort((x, y) => lastDate(y).localeCompare(lastDate(x)) || x.name.localeCompare(y.name));
 
-  const rows = list.map(e => `<button class="picker-row" data-action="pick-exercise" data-name="${esc(e.name)}">
-      <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${esc(e.muscle)}${e.equipment ? ` · ${esc(e.equipment)}` : ''}${e.kind ? ' · timed' : ''}</span></span>
-      <span class="muted small nowrap">${inWorkout.has(norm(e.name)) ? '✓ Added' : lastDate(e) ? relDay(lastDate(e)) : ''}</span>
-    </button>`).join('');
+  const rows = list.map(e => `<div class="picker-row">
+      <button class="picker-pick" data-action="pick-exercise" data-name="${esc(e.name)}">
+        <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${esc(musclesLabel(e))}${e.equipment ? ` · ${esc(e.equipment)}` : ''}${e.kind ? ' · timed' : ''}${e.custom ? ' · yours' : ''}</span></span>
+        <span class="muted small nowrap">${inWorkout.has(norm(e.name)) ? '✓ Added' : lastDate(e) ? relDay(lastDate(e)) : ''}</span>
+      </button>
+      ${e.custom ? `<button class="icon-btn" data-action="edit-custom" data-name="${esc(e.name)}" aria-label="Edit or delete ${esc(e.name)}">${icon('edit', 16)}</button>` : ''}
+    </div>`).join('');
   const known = exerciseIndex().has(nq) || a.exercises.has(nq);
   const create = nq && !known ? `<div class="picker-create">
-      <span>Add <strong>“${esc(q.trim())}”</strong> as a new exercise</span>
-      <select id="picker-new-muscle" aria-label="Category">${[...CATEGORIES, 'Other'].map(m => `<option ${m === muscle ? 'selected' : ''}>${m}</option>`).join('')}</select>
-      <button class="btn primary sm" data-action="create-exercise">Add</button>
+      <span>Nothing called <strong>“${esc(q.trim())}”</strong> yet.</span>
+      <button class="btn primary sm" data-action="create-exercise">${icon('plus', 14)} Create it</button>
     </div>` : '';
   return `<p class="muted small picker-count">${plural(list.length, 'exercise')}</p>`
     + (rows || (create ? '' : '<p class="muted small pad">No exercises match.</p>')) + create;
 }
 
-// Mark the tapped filter chip in place (so its row keeps its scroll position) and refilter
-function selectChip(el) {
-  for (const chip of el.parentElement.children) chip.classList.toggle('on', chip === el);
-  $('#picker-list').innerHTML = pickerList();
+function refreshPicker() {
+  $('#picker-filters').innerHTML = pickerFilters();
+  const list = $('#picker-list');
+  list.innerHTML = pickerList();
+  list.scrollTop = 0;
 }
 
 function addExerciseToActive(name) {
   const kind = kindOf(name);
-  const ex = { name, notes: '', kind, sets: [] };
-  const prev = state.active.mode === 'workout' ? prevFor(ex) : null;
-  const count = prev ? clamp(prev.work.length, 1, 8) : kind === 'cardio' ? 1 : 3;
-  ex.sets = Array.from({ length: count }, () => blankSet(kind));
+  // Cardio is a single entry; anything else starts with the number of sets chosen in the picker
+  const count = kind === 'cardio' ? 1 : state.settings.defaultSets;
+  const ex = { name, notes: '', kind, sets: Array.from({ length: count }, () => blankSet(kind)) };
   state.active.exercises.push(ex);
   closeModal();
   persist();
@@ -442,38 +463,58 @@ function addExerciseToActive(name) {
   if (card) card.scrollIntoView({ block: 'center', behavior: motionOn() ? 'smooth' : 'auto' });
 }
 
-Actions['open-picker'] = () => {
-  ui.picker = { q: '', muscle: 'All', equipment: 'Any' };
+// keep: come back to the picker as it was left (after editing an exercise from it)
+function openPicker(keep = false) {
+  if (!keep) ui.picker = { q: '', muscle: 'All', equipment: 'Any', open: null };
   openModal(`<div class="modal-head"><h2>Add exercise</h2><button class="icon-btn" data-action="close-modal" aria-label="Close">${icon('x')}</button></div>
-    <div class="search">${icon('search', 16)}<input id="picker-q" type="search" placeholder="Search or type a new exercise" data-input="picker-q" autocomplete="off"></div>
-    <div class="col gap-chips" id="picker-chips">${pickerChips()}</div>
+    <div class="search">${icon('search', 16)}<input id="picker-q" type="search" placeholder="Search ${exerciseIndex().size} exercises" value="${esc(ui.picker.q)}" data-input="picker-q" autocomplete="off" aria-label="Search exercises"></div>
+    <div class="filters" id="picker-filters">${pickerFilters()}</div>
+    <div class="picker-bar">
+      <span class="row gap-s"><span class="muted small">Start with</span><span class="stepper" id="sets-step">${setsStepper()}</span></span>
+      <button class="link" data-action="create-exercise">${icon('plus', 14)} Create your own</button>
+    </div>
     <div class="picker-list" id="picker-list">${pickerList()}</div>`, 'picker');
   // No autofocus on touch screens, where it would throw the keyboard over the list
-  if (matchMedia('(hover: hover)').matches) $('#picker-q').focus();
-};
+  if (!keep && matchMedia('(hover: hover)').matches) $('#picker-q').focus();
+}
+
+Actions['open-picker'] = () => openPicker();
 
 Inputs['picker-q'] = el => {
   ui.picker.q = el.value;
   $('#picker-list').innerHTML = pickerList();
 };
 
+Actions['picker-fold'] = el => {
+  ui.picker.open = ui.picker.open === el.dataset.which ? null : el.dataset.which;
+  $('#picker-filters').innerHTML = pickerFilters();
+};
+
 Actions['picker-muscle'] = el => {
   ui.picker.muscle = el.dataset.value;
-  selectChip(el);
+  ui.picker.open = null;
+  refreshPicker();
 };
 
 Actions['picker-equipment'] = el => {
   ui.picker.equipment = el.dataset.value;
-  selectChip(el);
+  ui.picker.open = null;
+  refreshPicker();
+};
+
+Actions['sets-step'] = el => {
+  const s = state.settings;
+  s.defaultSets = clamp(s.defaultSets + Number(el.dataset.dir), 1, 10);
+  persist();
+  $('#sets-step').innerHTML = setsStepper();
 };
 
 Actions['pick-exercise'] = el => addExerciseToActive(el.dataset.name);
 
+// A new exercise of your own, starting from whatever was typed and filtered
 Actions['create-exercise'] = () => {
-  const name = ui.picker.q.trim();
-  state.customExercises.push({ name, muscle: $('#picker-new-muscle').value, equipment: '' });
-  save();
-  addExerciseToActive(name);
+  const { q, muscle } = ui.picker;
+  openExerciseForm({ name: q.trim(), back: 'picker', kind: muscle === 'Cardio' ? 'cardio' : '', muscles: MUSCLES.includes(muscle) ? [muscle] : [] });
 };
 
 // ---------- launcher actions ----------

@@ -56,10 +56,6 @@ Views.tools = {
   render() {
     const s = state.settings;
     const u = unit();
-    const custom = state.customExercises.map((e, i) => `<li>
-        <span class="stack"><strong>${esc(e.name)}</strong><span class="muted small">${e.muscle}</span></span>
-        <button class="icon-btn danger" data-action="del-custom" data-i="${i}" aria-label="Delete exercise">${icon('trash', 16)}</button>
-      </li>`).join('');
     const empty = !state.workouts.length && !state.bodyweights.length;
     return `<div class="grid">
       <div class="c-6 col">
@@ -74,14 +70,12 @@ Views.tools = {
             <label class="field">Workouts per week goal<input type="number" inputmode="numeric" min="1" max="14" data-change="setting" data-key="weeklyGoal" value="${esc(s.weeklyGoal)}"></label>
             <label class="field">Barbell weight (${u})<input type="number" inputmode="decimal" min="0" step="0.5" data-change="setting" data-key="barWeight" value="${esc(s.barWeight)}"></label>
             <label class="field">Default rest${select('restSeconds', [[45, '0:45'], [60, '1:00'], [90, '1:30'], [120, '2:00'], [180, '3:00'], [240, '4:00']])}</label>
+            <label class="field">Sets for a new exercise${select('defaultSets', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, plural(n, 'set')]))}</label>
           </div>
           <label class="check"><input type="checkbox" data-change="setting" data-key="autoRest" ${s.autoRest ? 'checked' : ''}> Start the rest timer when I tick off a set</label>
           <div><button class="btn" data-action="setup-open">Run the intro setup again</button></div>
         </section>
-        ${custom ? `<section class="card">
-          <div class="card-head"><h3>My exercises</h3><span class="muted small">Added by you</span></div>
-          <ul class="list">${custom}</ul>
-        </section>` : ''}
+        ${customExercisesCard()}
       </div>
       <div class="c-6 col">
         <section class="card">
@@ -111,7 +105,7 @@ Views.tools = {
   },
 };
 
-const NUMERIC_SETTINGS = new Set(['weeklyGoal', 'barWeight', 'restSeconds', 'targetWeight', 'height']);
+const NUMERIC_SETTINGS = new Set(['weeklyGoal', 'barWeight', 'restSeconds', 'defaultSets', 'targetWeight', 'height']);
 
 Changes.setting = el => {
   const key = el.dataset.key;
@@ -123,17 +117,10 @@ Changes.setting = el => {
   } else if (NUMERIC_SETTINGS.has(key)) {
     s[key] = el.value === '' ? '' : Math.max(0, Number(el.value) || 0);
     if (key === 'weeklyGoal') s[key] = clamp(Math.round(s[key]) || 1, 1, 14);
+    if (key === 'defaultSets') s[key] = clamp(Math.round(s[key]) || 3, 1, 10);
   } else {
     s[key] = el.value;
   }
-  save();
-  render();
-};
-
-Actions['del-custom'] = el => {
-  const e = state.customExercises[Number(el.dataset.i)];
-  if (!confirm(`Remove “${e.name}” from your exercises? Workouts that used it are kept.`)) return;
-  state.customExercises.splice(Number(el.dataset.i), 1);
   save();
   render();
 };

@@ -16,6 +16,7 @@ function defaultSettings() {
     barWeight: 20,
     restSeconds: 90,
     autoRest: true,
+    defaultSets: 3,      // sets a newly added exercise starts with
     setupDone: false,    // has the first-run setup been finished or skipped
     installDismissed: false, // "Not now" on the install banner
     installed: false,    // the browser reported the app as installed on this device
@@ -30,7 +31,7 @@ function defaults() {
     bodyweights: [],     // { date, weight }
     measurements: [],    // { date, type, value }
     routines: [],        // { id, name, exercises: [{ name, sets: [{ reps, weight, type }] }] }
-    customExercises: [], // { name, muscle, equipment }
+    customExercises: [], // { name, muscle, muscles, equipment, kind }: muscle is the main group, muscles every group it works
     restDays: [],        // { date, note }: days deliberately taken off
     active: null,        // the workout or routine being edited right now
     demo: false,
@@ -111,6 +112,7 @@ function cleanImport(data) {
       barWeight: n(s.barWeight),
       restSeconds: clamp(Math.round(n(s.restSeconds)) || 90, 10, 900),
       autoRest: !!s.autoRest,
+      defaultSets: clamp(Math.round(n(s.defaultSets)) || 3, 1, 10),
       setupDone: true,
     },
     workouts: list(data.workouts).filter(w => isDate(w.date))
@@ -121,8 +123,13 @@ function cleanImport(data) {
       .map(m => ({ date: m.date, type: m.type, value: Number(m.value) })),
     routines: list(data.routines).map(r => ({ id: uniqueId(r.id), name: text(r.name, 80).trim() || 'Routine', exercises: planned(r.exercises) }))
       .filter(r => r.exercises.length),
-    customExercises: list(data.customExercises).filter(e => text(e.name, 80).trim())
-      .map(e => ({ name: text(e.name, 80).trim(), muscle: CATEGORIES.includes(e.muscle) ? e.muscle : 'Other', equipment: '' })),
+    customExercises: list(data.customExercises).filter(e => text(e.name, 80).trim()).map(e => {
+      const cardio = e.muscle === 'Cardio';
+      const muscles = cardio ? [] : [...new Set((Array.isArray(e.muscles) ? e.muscles : [e.muscle]).filter(m => MUSCLES.includes(m)))];
+      const out = { name: text(e.name, 80).trim(), muscle: cardio ? 'Cardio' : muscles[0] || 'Other', muscles, equipment: pick(e.equipment, EQUIPMENT, '') };
+      if (e.kind === 'hold' && !cardio) out.kind = 'hold';
+      return out;
+    }),
     // One entry per date; a later duplicate wins
     restDays: [...new Map(list(data.restDays).filter(r => isDate(r.date)).map(r => [r.date, { date: r.date, note: text(r.note, 200) }])).values()],
   });
@@ -152,15 +159,24 @@ function exerciseIndex() {
   if (!_exIndex) {
     _exIndex = new Map(EXERCISE_LIBRARY.map(e => [norm(e.name), e]));
     for (const e of state.customExercises) {
-      _exIndex.set(norm(e.name), { ...e, kind: e.muscle === 'Cardio' ? 'cardio' : null, custom: true });
+      _exIndex.set(norm(e.name), {
+        ...e,
+        // One you added yourself can work several muscle groups; older ones only stored the one
+        muscles: e.muscles && e.muscles.length ? e.muscles : [e.muscle || 'Other'],
+        kind: e.muscle === 'Cardio' ? 'cardio' : e.kind === 'hold' ? 'hold' : null,
+        custom: true,
+      });
     }
   }
   return _exIndex;
 }
 
 function exerciseInfo(name) {
-  return exerciseIndex().get(norm(name)) || { name, muscle: 'Other', equipment: '', kind: null };
+  return exerciseIndex().get(norm(name)) || { name, muscle: 'Other', muscles: ['Other'], equipment: '', kind: null };
 }
+
+// "Biceps + Back", for the line under an exercise's name
+const musclesLabel = info => info.muscles.join(' + ');
 
 // ---------- units ----------
 

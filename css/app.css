@@ -31,6 +31,9 @@
   --seq-3: #3987e5;
   --seq-4: #1c5cab;
   --gridline: #eceef2;
+  /* The figure on the muscle map: head, hands and joints, then a muscle with nothing to show */
+  --body-skin: #eceef2;
+  --body-base: #d8dce3;
   --shadow: 0 1px 2px rgba(17, 24, 39, .04), 0 1px 3px rgba(17, 24, 39, .06);
   --shadow-lg: 0 12px 34px rgba(17, 24, 39, .16);
   --tip-bg: #111827;
@@ -68,6 +71,8 @@
   --seq-3: #3987e5;
   --seq-4: #86b6ef;
   --gridline: #232832;
+  --body-skin: #232832;
+  --body-base: #363d4a;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3);
   --shadow-lg: 0 12px 34px rgba(0, 0, 0, .55);
   --tip-bg: #eceef2;
@@ -115,7 +120,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 18px 12px;
+  padding: calc(18px + env(safe-area-inset-top)) 12px 18px;
   background: var(--surface);
   border-right: 1px solid var(--line);
   z-index: 20;
@@ -176,7 +181,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 24px;
+  padding: calc(12px + env(safe-area-inset-top)) 24px 12px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
@@ -592,23 +597,40 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 #timer-pill strong { min-width: 40px; font-size: 15px; }
 
 /* Exercise picker */
-.modal.picker { max-width: 560px; height: min(84vh, 680px); }
-.picker-list { flex: 1; overflow-y: auto; margin: 0 -8px; }
+.modal.picker { max-width: 640px; height: min(90vh, 820px); }
+.picker-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -8px; }
 .picker-count { margin: 0 10px 4px; }
-.gap-chips { gap: 6px; }
-.picker-row {
+.picker-row { display: flex; align-items: center; border-radius: 9px; }
+.picker-row:hover { background: var(--hover); }
+.picker-row .icon-btn { flex: none; margin-right: 4px; }
+.picker-pick {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  width: 100%;
+  min-width: 0;
   padding: 8px 10px;
   background: none;
   border: 0;
   border-radius: 9px;
   text-align: left;
 }
-.picker-row:hover { background: var(--hover); }
+.picker-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+.picker-bar .link { font-size: 13px; }
+
+/* Filter chips. On a phone each group folds behind a button (see the phone rules) */
+.filters { display: flex; flex-direction: column; gap: 6px; }
+.filter-tabs { display: none; }
+
+.stepper { display: inline-flex; align-items: center; background: var(--surface-2); border-radius: 9px; }
+.stepper > span { min-width: 52px; text-align: center; font-size: 13px; white-space: nowrap; }
+
+/* Making or editing an exercise of your own */
+.ex-form { display: flex; flex-direction: column; gap: 14px; }
+.ex-form .seg { align-self: flex-start; }
+.exform-muscles { display: flex; align-items: center; gap: 12px; }
+.exform-muscles .chips { flex: 1; }
 .picker-create { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 8px 8px; padding: 10px; background: var(--accent-soft); border-radius: 10px; }
 .picker-create span { flex: 1; min-width: 160px; }
 
@@ -720,6 +742,50 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .hbar.part { grid-template-columns: 76px minmax(0, 1fr) 20px 98px; }
 .section-title.sub { margin: 6px 0 -4px; font-size: 11.500px; }
 
+/* Muscle map: a front and a back figure with one shape per muscle group */
+.muscle-map { display: flex; align-items: center; gap: 18px; }
+.body-map { flex: none; display: flex; gap: 6px; }
+.body-map figure { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 0; }
+.body-map figcaption { color: var(--muted); font-size: 11px; font-weight: 600; }
+.body-fig { display: block; width: 118px; height: auto; }
+.body-fig .skin { fill: var(--body-skin); }
+.body-fig .part, .body-fig .m { fill: var(--body-base); }
+.body-fig .m { transition: fill .2s, opacity .15s; }
+.body-fig .m[data-action] { cursor: pointer; }
+.body-fig .m[data-action]:hover { opacity: .75; }
+.body-fig .m.up { fill: var(--good); }
+.body-fig .m.down { fill: var(--bad); }
+.body-fig .m.flat { fill: var(--neutral); }
+.body-fig .m.new { fill: var(--seq-2); }
+.body-fig .m.l1 { fill: var(--seq-1); }
+.body-fig .m.l2 { fill: var(--seq-2); }
+.body-fig .m.l3 { fill: var(--seq-3); }
+.body-fig .m.l4 { fill: var(--seq-4); }
+.body-fig .m.hit { fill: var(--accent); }
+/* Small versions: beside an exercise's name, and in the exercise form */
+.body-map.mini { gap: 2px; }
+.body-map.mini .body-fig { width: 26px; }
+.body-map.small { gap: 4px; }
+.body-map.small .body-fig { width: 54px; }
+.body-map.mid { gap: 3px; }
+.body-map.mid .body-fig { width: 40px; }
+.body-map.mini figcaption, .body-map.small figcaption, .body-map.mid figcaption { display: none; }
+
+.muscle-key { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.key-row { display: flex; flex-direction: column; gap: 4px; }
+.key-row .delta { font-size: 12.500px; }
+.delta.none { color: var(--muted); }
+.key-row .delta.new { color: var(--accent-strong); }
+.mtags { display: flex; flex-wrap: wrap; gap: 5px; }
+.mtag { padding: 3px 10px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 999px; color: var(--text-2); font-size: 12.500px; font-weight: 550; }
+.mtag:hover { border-color: var(--neutral); }
+.mtag.up { background: var(--good-soft); border-color: transparent; color: var(--good-text); }
+.mtag.down { background: var(--bad-soft); border-color: transparent; color: var(--bad-text); }
+.mtag.flat { background: var(--surface-2); border-color: transparent; }
+.mtag.new, .mtag.l1, .mtag.l2, .mtag.l3, .mtag.l4 { background: var(--accent-soft); border-color: transparent; color: var(--accent-strong); }
+.mtag strong { margin-left: 2px; }
+.scroll-list { max-height: 38vh; margin: 0 -8px; padding: 0 8px; overflow: hidden auto; }
+
 /* Month calendar */
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .cal-head { color: var(--muted); font-size: 11px; font-weight: 600; text-align: center; }
@@ -809,7 +875,7 @@ button.cal-day:hover { background: var(--hover); }
   /* The column may shrink below its content, so a wide row inside scrolls instead of stretching the dialog */
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  padding: 16px;
+  padding: max(16px, env(safe-area-inset-top)) 16px 16px;
   background: rgba(17, 24, 39, .45);
   backdrop-filter: blur(3px);
   overflow-y: auto;
@@ -876,7 +942,7 @@ button.cal-day:hover { background: var(--hover); }
 
 /* ---------- motion ---------- */
 
-.btn, .icon-btn, .chip, .nav-item, .seg button, .done-btn, .set-type { transition: background-color .15s, border-color .15s, color .15s, transform .08s; }
+.btn, .icon-btn, .chip, .mtag, .filter-tab, .nav-item, .seg button, .done-btn, .set-type { transition: background-color .15s, border-color .15s, color .15s, transform .08s; }
 .btn:active:not(:disabled), .done-btn:active, .chip:active { transform: scale(.96); }
 .tile, .card.routine, .ach { transition: transform .18s, border-color .18s, box-shadow .18s; }
 .tile:hover, .card.routine:hover { transform: translateY(-2px); border-color: var(--line-2); }
@@ -899,6 +965,7 @@ button.cal-day:hover { background: var(--hover); }
 .enter .bar { animation: grow-y .55s cubic-bezier(.2, .9, .3, 1) both; }
 .enter .hbar-fill, .enter .progress > span { animation: grow-x .6s cubic-bezier(.2, .9, .3, 1) both; }
 .enter .heat i { animation: fade .4s ease-out both; }
+.enter .body-fig .m, .enter .body-fig .part, .enter .body-fig .skin { animation: fade .5s .1s ease-out both; }
 .enter .ring-fill { animation: ring .9s .1s cubic-bezier(.2, .9, .3, 1) both; }
 .enter .badge { animation: pop .3s .25s ease-out both; }
 .enter .badge.pr { animation: pop .3s .25s ease-out both, shimmer 2.600s linear infinite; }
@@ -982,11 +1049,54 @@ button.cal-day:hover { background: var(--hover); }
   .btn.sm { min-height: 36px; padding: 6px 12px; font-size: 13px; }
   .icon-btn { width: 36px; height: 36px; }
   .chip { padding: 7px 13px; white-space: nowrap; }
-  /* One swipeable line per filter row, so the list keeps its space */
-  .picker .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -20px; padding: 0 20px 2px; scrollbar-width: none; }
-  .picker .chips::-webkit-scrollbar { display: none; }
+  .mtag { padding: 6px 12px; }
+
+  /* The exercise picker takes the whole screen */
+  .overlay.for-picker { padding: 0; }
+  .modal.picker {
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    gap: 10px;
+    padding: calc(14px + env(safe-area-inset-top)) 16px env(safe-area-inset-bottom);
+    border-radius: 0;
+    animation: rise .25s ease-out;
+  }
+  /* Each filter is a button showing the current choice; tapping it unfolds every option */
+  .filter-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .filter-tab {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px 10px 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    text-align: left;
+  }
+  .filter-tab strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .filter-tab .icon { color: var(--muted); transition: transform .15s; }
+  .filter-tab.set { background: var(--accent-soft); border-color: var(--accent); }
+  .filter-tab.set strong { color: var(--accent-strong); }
+  .filter-tab.open { border-color: var(--accent); }
+  .filter-tab.open .icon { transform: rotate(180deg); }
+  .filters .chips { display: none; }
+  .filters .chips.open { display: flex; padding: 2px 0; }
+  .picker-pick { padding-top: 11px; padding-bottom: 11px; }
+
+  .muscle-map { flex-direction: column; align-items: stretch; gap: 14px; }
+  .body-map { justify-content: center; gap: 14px; }
+  .body-fig { width: 128px; }
+  .body-map.mini { gap: 2px; }
+  .body-map.mid { gap: 3px; }
+  .body-map.small { gap: 4px; }
+  .body-map.mini .body-fig { width: 26px; }
+  .body-map.mid .body-fig { width: 40px; }
+  .body-map.small .body-fig { width: 46px; }
   .seg button { padding: 7px 12px; }
-  .picker-row, .ex-row { padding-top: 11px; padding-bottom: 11px; }
+  .ex-row { padding-top: 11px; padding-bottom: 11px; }
   .cal-day { max-height: none; font-size: 14px; }
 
   .sets .cmp { display: none; }

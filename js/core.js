@@ -26,7 +26,9 @@ const ui = {
   exercise: { key: null, metric: 'best', range: 'all', q: '' },
   history: { month: null, day: null, q: '', scope: 'month' },
   body: { range: 'all' },
-  picker: { q: '', muscle: 'All', equipment: 'Any' },
+  picker: { q: '', muscle: 'All', equipment: 'Any', open: null },
+  muscleMap: 'progress', // what the muscle map is coloured by: 'progress' | 'sets'
+  exForm: null, // the exercise being created or edited
   tools: { plateTarget: '', rmWeight: '', rmReps: '' },
   setup: null, // answers so far while the first-run setup is open
 };

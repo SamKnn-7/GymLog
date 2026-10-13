@@ -1,6 +1,6 @@
 'use strict';
 
-const MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'];
+const MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Adductors', 'Calves', 'Core'];
 // Everything an exercise can be filed under: the muscle groups plus cardio
 const CATEGORIES = [...MUSCLES, 'Cardio'];
 const EQUIPMENT = ['Barbell', 'Dumbbell', 'Smith machine', 'Machine', 'Cable', 'Calisthenics'];
@@ -8,6 +8,8 @@ const EQUIPMENT = ['Barbell', 'Dumbbell', 'Smith machine', 'Machine', 'Cable', '
 // Built-in exercises: [name, category, equipment, kind]
 // kind 'hold' is logged as a time instead of weight and reps. Anything under
 // Cardio is logged as a time plus an optional distance.
+// Each becomes { name, muscle, muscles, equipment, kind }. `muscles` lists every
+// group the exercise counts towards: one for these, any number for your own.
 const EXERCISE_LIBRARY = [
   // --- Chest ---
   ['Bench press', 'Chest', 'Barbell'],
@@ -208,6 +210,16 @@ const EXERCISE_LIBRARY = [
   ['Single-leg glute bridge', 'Glutes', 'Calisthenics'],
   ['Donkey kicks', 'Glutes', 'Calisthenics'],
 
+  // --- Adductors (inner thigh) ---
+  ['Hip adduction machine', 'Adductors', 'Machine'],
+  ['Cable hip adduction', 'Adductors', 'Cable'],
+  ['Dumbbell sumo squat', 'Adductors', 'Dumbbell'],
+  ['Lateral lunge', 'Adductors', 'Dumbbell'],
+  ['Smith machine lateral lunge', 'Adductors', 'Smith machine'],
+  ['Side-lying hip adduction', 'Adductors', 'Calisthenics'],
+  ['Copenhagen raise', 'Adductors', 'Calisthenics'],
+  ['Copenhagen plank', 'Adductors', 'Calisthenics', 'hold'],
+
   // --- Calves ---
   ['Calf raise', 'Calves', 'Machine'],
   ['Seated calf raise', 'Calves', 'Machine'],
@@ -262,7 +274,7 @@ const EXERCISE_LIBRARY = [
   ['Jump rope', 'Cardio', 'Calisthenics'],
   ['Jumping jacks', 'Cardio', 'Calisthenics'],
   ['Interval training', 'Cardio', 'Calisthenics'],
-].map(([name, muscle, equipment, kind]) => ({ name, muscle, equipment, kind: kind || (muscle === 'Cardio' ? 'cardio' : null) }));
+].map(([name, muscle, equipment, kind]) => ({ name, muscle, muscles: [muscle], equipment, kind: kind || (muscle === 'Cardio' ? 'cardio' : null) }));
 
 // Ready-made routines: [exercise, sets, reps]. For holds the last number is seconds.
 const TEMPLATES = [

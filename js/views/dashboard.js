@@ -84,7 +84,7 @@ function exerciseTable(exercises, limit) {
   const rows = exercises.slice(0, limit).map(e => {
     const s = lastOf(e.sessions);
     return `<tr class="clickable" data-action="open-ex" data-key="${esc(e.key)}">
-      <td><strong>${esc(e.name)}</strong><span class="muted small block">${e.info.muscle} · ${relDay(s.date)}</span></td>
+      <td><strong>${esc(e.name)}</strong><span class="muted small block">${esc(musclesLabel(e.info))} · ${relDay(s.date)}</span></td>
       <td class="hide-s">${sparkline(e.sessions.slice(-12).map(x => x.best), s.status)}</td>
       <td>${fmtSet(s.bestSet)}</td>
       <td class="num hide-s">${s.weighted ? num(s.best) : '–'}</td>
@@ -288,16 +288,18 @@ Views.dashboard = {
       </section>` : ''}
       ${tiles}
 
-      <section class="card c-5">
+      <section class="card c-6">
         <div class="card-head"><h3>Activity</h3><span class="muted small">Last 16 weeks</span></div>
         ${heatmap(16)}
       </section>
-      <section class="card c-4">
+      <section class="card c-6">
         <div class="card-head"><h3>${bars.useVolume ? 'Weekly volume' : 'Weekly sets'}</h3><span class="muted small">${bars.useVolume ? `${u} lifted` : 'sets'}</span></div>
         ${bars.html}
         <p class="legend"><span class="key up"></span>Matched or beat the week before <span class="key down"></span>Fell short</p>
       </section>
-      <section class="card c-3">
+
+      ${muscleMapCard(cur7, prev7)}
+      <section class="card c-6">
         <div class="card-head"><h3>Muscle groups</h3><span class="muted small">Sets, 7 days</span></div>
         ${muscleBars(cur7.muscles, prev7.muscles)}
         <p class="legend"><span class="key mark"></span>The 7 days before</p>

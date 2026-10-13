@@ -21,16 +21,17 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && modalOpen()) return ui.setup ? Actions['setup-skip']() : closeModal();
+  if (e.key === 'Escape' && modalOpen()) return ui.setup ? Actions['setup-skip']() : $('#ex-form') ? leaveExForm() : closeModal();
   if (e.key !== 'Enter') return;
   const el = e.target;
 
   // Picker: Enter takes the first match, or creates the exercise
   if (el.id === 'picker-q') {
-    const first = $('#picker-list .picker-row') || $('#picker-list [data-action="create-exercise"]');
+    const first = $('#picker-list .picker-pick') || $('#picker-list [data-action="create-exercise"]');
     if (first) first.click();
     return;
   }
+  if (el.id === 'exform-name') return Actions['exform-save']();
   if (el.dataset.input === 'setup-field') return $('#setup .btn.primary').click();
   if (el.id === 'bw-weight') return Actions['save-bw']();
   if (el.id === 'measure-value') return Actions['save-measure']();

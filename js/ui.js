@@ -10,6 +10,7 @@ const ICONS = {
   scale: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.500 10.500a4.500 4.500 0 0 1 7 0M12 8.500l1 2.500"/>',
   tools: '<path d="M4 6h8M16 6h4M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
   check: '<path d="M5 12.500l4.500 4.500L19 7.500"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   left: '<path d="M15 6l-6 6 6 6"/>',
@@ -93,10 +94,17 @@ function motionOn() {
   return m === 'on' || (m === 'auto' && !matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
+// The page background of each theme. The phone's status bar and an installed
+// app's title bar are given the same colour, so they read as part of the app
+// instead of a bar across the top. (index.html sets this before the first paint.)
+const THEME_COLOR = { light: '#f6f7f9', dark: '#0e1014' };
+
 function applyAppearance() {
   const root = document.documentElement;
   root.dataset.theme = state.settings.theme;
   root.dataset.motion = motionOn() ? 'on' : 'off';
+  const bar = $('meta[name="theme-color"]');
+  if (bar) bar.content = THEME_COLOR[state.settings.theme] || THEME_COLOR.light;
 }
 
 // Play the entrance animations of everything inside `el`
@@ -155,7 +163,7 @@ function toast(msg, tone = '') {
 
 // locked: tapping outside the dialog does not close it
 function openModal(html, cls = '', locked = false) {
-  $('#modal').innerHTML = `<div class="overlay" ${locked ? '' : 'data-overlay'}><div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div></div>`;
+  $('#modal').innerHTML = `<div class="overlay ${cls ? `for-${cls}` : ''}" ${locked ? '' : 'data-overlay'}><div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div></div>`;
   document.body.classList.add('modal-open');
 }
 
